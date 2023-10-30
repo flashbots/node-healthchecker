@@ -1,0 +1,12 @@
+# Built binaries
+
+bin/*
+!bin/.gitkeep
+
+# Goreleaser artifacts
+
+dist/*
+
+# VS Code
+
+.vscode
