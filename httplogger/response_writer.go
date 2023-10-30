@@ -15,7 +15,10 @@ func wrapResponseWriter(w http.ResponseWriter) *responseWriter {
 }
 
 func (rw *responseWriter) Status() int {
-	return rw.status
+	if rw.wroteHeader {
+		return rw.status
+	}
+	return http.StatusOK
 }
 
 func (rw *responseWriter) WriteHeader(code int) {
