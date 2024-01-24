@@ -11,17 +11,28 @@ import (
 
 func (h *Healthchecker) checkLighthouse(ctx context.Context, url string) error {
 	// https://lighthouse-book.sigmaprime.io/api-lighthouse.html#lighthousesyncing
+	// https://github.com/sigp/lighthouse/blob/v4.5.0/beacon_node/lighthouse_network/src/types/sync_state.rs#L6-L27
 
-	type isNotSyncing struct {
+	type stateString struct {
 		Data string // `json:"data"`
 	}
 
-	type isSyncing struct {
+	type stateStruct struct {
 		Data struct {
-			SyncingFinalized struct {
+			BackFillSyncing *struct {
+				Completed uint64 // `json:"completed"`
+				Remaining uint64 // `json:"remaining"`
+			} // `json:"BackFillSyncing"`
+
+			SyncingFinalized *struct {
 				StartSlot  string // `json:"start_slot"`
 				TargetSlot string // `json:"target_slot"`
 			} // `json:"SyncingFinalized"`
+
+			SyncingHead *struct {
+				StartSlot  string // `json:"start_slot"`
+				TargetSlot string // `json:"target_slot"`
+			} // `json:"SyncingHead"`
 		} // `json:"data"`
 	}
 
@@ -57,24 +68,44 @@ func (h *Healthchecker) checkLighthouse(ctx context.Context, url string) error {
 		)
 	}
 
-	var status isNotSyncing
-	if err := json.Unmarshal(body, &status); err != nil {
-		var status isSyncing
-		if err2 := json.Unmarshal(body, &status); err2 != nil {
+	var state stateString
+	if err := json.Unmarshal(body, &state); err != nil {
+		var state stateStruct
+		if err2 := json.Unmarshal(body, &state); err2 != nil {
 			return fmt.Errorf(
 				"failed to parse JSON body '%s': %w",
 				string(body),
 				errors.Join(err, err2),
 			)
 		}
-		return fmt.Errorf(
-			"lighthouse is still syncing (start: %s, target: %s)",
-			status.Data.SyncingFinalized.StartSlot,
-			status.Data.SyncingFinalized.TargetSlot,
-		)
+		switch {
+		case state.Data.BackFillSyncing != nil:
+			return fmt.Errorf(
+				"lighthouse is in 'BackFillSyncing' state (completed: %d, remaining: %d)",
+				state.Data.BackFillSyncing.Completed,
+				state.Data.BackFillSyncing.Remaining,
+			)
+		case state.Data.SyncingFinalized != nil:
+			return fmt.Errorf(
+				"lighthouse is in 'SyncingFinalized' state (start_slot: %s, target_slot: %s)",
+				state.Data.SyncingFinalized.StartSlot,
+				state.Data.SyncingFinalized.TargetSlot,
+			)
+		case state.Data.SyncingHead != nil:
+			return fmt.Errorf(
+				"lighthouse is in 'SyncingHead' state (start_slot: %s, target_slot: %s)",
+				state.Data.SyncingHead.StartSlot,
+				state.Data.SyncingHead.TargetSlot,
+			)
+		default:
+			return fmt.Errorf(
+				"lighthouse is in unrecognised state: %s",
+				string(body),
+			)
+		}
 	}
-	if status.Data != "Synced" {
-		return fmt.Errorf("lighthouse is not synced: %s", status.Data)
+	if state.Data != "Synced" {
+		return fmt.Errorf("lighthouse is in '%s' state", state.Data)
 	}
 
 	return nil
