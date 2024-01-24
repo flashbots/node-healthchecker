@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/flashbots/node-healthchecker/httplogger"
+	"github.com/flashbots/node-healthchecker/logutils"
 	"go.uber.org/zap"
 )
 
@@ -129,23 +130,33 @@ func (h *Healthchecker) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		}()
 	}
 
-	errors := []error{}
+	errs := []error{}
 	for count > 0 {
 		count--
 		if res := <-results; res != nil {
-			errors = append(errors, res)
+			errs = append(errs, res)
 		}
 	}
 	close(results)
 
-	if len(errors) == 0 {
+	if len(errs) == 0 {
 		return
 	}
 
+	l := logutils.LoggerFromRequest(r)
+
 	w.Header().Set("Content-Type", "application/text")
 	w.WriteHeader(http.StatusInternalServerError)
-	for idx, err := range errors {
+	for idx, err := range errs {
 		line := fmt.Sprintf("%d: %s\n", idx, err)
-		w.Write([]byte(line))
+		_, err := w.Write([]byte(line))
+		if err != nil {
+			l.Error("Failed to write the response body", zap.Error(err))
+		}
 	}
+
+	l.Warn(
+		"Failed the healthcheck due to upstream error(s)",
+		zap.Error(errors.Join(errs...)),
+	)
 }
