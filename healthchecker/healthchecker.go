@@ -21,17 +21,23 @@ type Healthchecker struct {
 	log     *zap.Logger
 	timeout time.Duration
 
-	monitors []monitor
+	monitors []healthcheckMonitor
+}
+
+type healthcheckMonitor = func(context.Context) *healthcheckResult
+
+type healthcheckResult struct {
+	ok  bool
+	err error
 }
 
 type Config struct {
 	MonitorGethURL       string
 	MonitorLighthouseURL string
-	ServeAddress         string
-	Timeout              time.Duration
-}
 
-type monitor = func(context.Context) error
+	ServeAddress string
+	Timeout      time.Duration
+}
 
 func New(cfg *Config) (*Healthchecker, error) {
 	h := &Healthchecker{
@@ -47,15 +53,8 @@ func New(cfg *Config) (*Healthchecker, error) {
 		if err != nil {
 			return nil, err
 		}
-		h.monitors = append(h.monitors, func(ctx context.Context) error {
-			if err := h.checkGeth(ctx, rpcURL); err != nil {
-				return fmt.Errorf(
-					"error while checking sync-status of geth at '%s': %w",
-					rpcURL,
-					err,
-				)
-			}
-			return nil
+		h.monitors = append(h.monitors, func(ctx context.Context) *healthcheckResult {
+			return h.checkGeth(ctx, rpcURL)
 		})
 	}
 
@@ -66,15 +65,8 @@ func New(cfg *Config) (*Healthchecker, error) {
 		if err != nil {
 			return nil, err
 		}
-		h.monitors = append(h.monitors, func(ctx context.Context) error {
-			if err := h.checkLighthouse(ctx, syncingURL); err != nil {
-				return fmt.Errorf(
-					"error while checking sync-status of lighthouse at '%s': %w",
-					syncingURL,
-					err,
-				)
-			}
-			return nil
+		h.monitors = append(h.monitors, func(ctx context.Context) *healthcheckResult {
+			return h.checkLighthouse(ctx, syncingURL)
 		})
 	}
 
@@ -118,8 +110,10 @@ func (h *Healthchecker) Serve() error {
 }
 
 func (h *Healthchecker) handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
+	l := logutils.LoggerFromRequest(r)
+
 	count := len(h.monitors)
-	results := make(chan error, count)
+	results := make(chan *healthcheckResult, count)
 
 	for _, m := range h.monitors {
 		monitor := m // https://go.dev/blog/loopvar-preview
@@ -131,32 +125,63 @@ func (h *Healthchecker) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 	}
 
 	errs := []error{}
+	warns := []error{}
 	for count > 0 {
 		count--
 		if res := <-results; res != nil {
-			errs = append(errs, res)
+			if !res.ok {
+				errs = append(errs, res.err)
+			} else if res.err != nil {
+				warns = append(warns, res.err)
+			}
 		}
 	}
 	close(results)
 
-	if len(errs) == 0 {
+	switch {
+	case len(errs) == 0 && len(warns) == 0:
 		return
-	}
 
-	l := logutils.LoggerFromRequest(r)
+	case len(errs) > 0:
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/text")
 
-	w.Header().Set("Content-Type", "application/text")
-	w.WriteHeader(http.StatusInternalServerError)
-	for idx, err := range errs {
-		line := fmt.Sprintf("%d: %s\n", idx, err)
-		_, err := w.Write([]byte(line))
-		if err != nil {
-			l.Error("Failed to write the response body", zap.Error(err))
+		for idx, err := range errs {
+			line := fmt.Sprintf("%d: error: %s\n", idx, err)
+			_, err := w.Write([]byte(line))
+			if err != nil {
+				l.Error("Failed to write the response body", zap.Error(err))
+			}
 		}
-	}
+		offset := len(errs)
+		for idx, warn := range warns {
+			line := fmt.Sprintf("%d: warning: %s\n", offset+idx, warn)
+			_, err := w.Write([]byte(line))
+			if err != nil {
+				l.Error("Failed to write the response body", zap.Error(err))
+			}
+		}
 
-	l.Warn(
-		"Failed the healthcheck due to upstream error(s)",
-		zap.Error(errors.Join(errs...)),
-	)
+		l.Warn(
+			"Failed the healthcheck due to upstream error(s)",
+			zap.Error(errors.Join(errs...)),
+		)
+
+	case len(errs) == 0 && len(warns) > 0:
+		w.WriteHeader(http.StatusAccepted)
+		w.Header().Set("Content-Type", "application/text")
+
+		for idx, warn := range warns {
+			line := fmt.Sprintf("%d: %s\n", idx, warn)
+			_, err := w.Write([]byte(line))
+			if err != nil {
+				l.Error("Failed to write the response body", zap.Error(err))
+			}
+		}
+
+		l.Warn(
+			"Failed the healthcheck due to upstream error(s)",
+			zap.Error(errors.Join(errs...)),
+		)
+	}
 }
