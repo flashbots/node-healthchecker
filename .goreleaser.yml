@@ -25,8 +25,5 @@ archives:
 checksum:
   name_template: 'checksums.txt'
 
-signs:
-  - artifacts: checksum
-
 release:
   prerelease: auto

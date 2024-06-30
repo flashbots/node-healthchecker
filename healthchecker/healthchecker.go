@@ -22,6 +22,10 @@ type Healthchecker struct {
 	timeout time.Duration
 
 	monitors []healthcheckMonitor
+
+	statusOk      int
+	statusWarning int
+	statusError   int
 }
 
 type healthcheckMonitor = func(context.Context) *healthcheckResult
@@ -37,6 +41,10 @@ type Config struct {
 
 	ServeAddress string
 	Timeout      time.Duration
+
+	StatusOk      int
+	StatusWarning int
+	StatusError   int
 }
 
 func New(cfg *Config) (*Healthchecker, error) {
@@ -44,6 +52,10 @@ func New(cfg *Config) (*Healthchecker, error) {
 		addr:    cfg.ServeAddress,
 		log:     zap.L(),
 		timeout: cfg.Timeout,
+
+		statusOk:      cfg.StatusOk,
+		statusWarning: cfg.StatusWarning,
+		statusError:   cfg.StatusError,
 	}
 
 	// Configure geth checks
@@ -140,10 +152,11 @@ func (h *Healthchecker) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 
 	switch {
 	case len(errs) == 0 && len(warns) == 0:
+		w.WriteHeader(h.statusOk)
 		return
 
 	case len(errs) > 0:
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(h.statusError)
 		w.Header().Set("Content-Type", "application/text")
 
 		for idx, err := range errs {
@@ -168,7 +181,7 @@ func (h *Healthchecker) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		)
 
 	case len(errs) == 0 && len(warns) > 0:
-		w.WriteHeader(http.StatusAccepted)
+		w.WriteHeader(h.statusWarning)
 		w.Header().Set("Content-Type", "application/text")
 
 		for idx, warn := range warns {

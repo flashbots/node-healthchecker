@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/flashbots/node-healthchecker/healthchecker"
@@ -32,6 +33,30 @@ func CommandServe() *cli.Command {
 				Name:        "timeout",
 				Usage:       "healthcheck(s) timeout `duration`",
 				Value:       time.Second,
+			},
+
+			&cli.IntFlag{
+				Category:    "Serving:",
+				Destination: &cfg.StatusOk,
+				Name:        "status-ok",
+				Usage:       "http `status` to report for good healthchecks",
+				Value:       http.StatusOK,
+			},
+
+			&cli.IntFlag{
+				Category:    "Serving:",
+				Destination: &cfg.StatusWarning,
+				Name:        "status-warning",
+				Usage:       "http `status` to report for warning healthchecks",
+				Value:       http.StatusAccepted,
+			},
+
+			&cli.IntFlag{
+				Category:    "Serving:",
+				Destination: &cfg.StatusError,
+				Name:        "status-error",
+				Usage:       "http `status` to report for error healthchecks",
+				Value:       http.StatusInternalServerError,
 			},
 
 			// Monitoring
