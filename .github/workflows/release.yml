@@ -25,3 +25,10 @@ jobs:
           distribution: goreleaser
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: upload artifacts
+        uses: actions/upload-artifact@v4.3.1
+        with:
+          path: |
+            dist/*.zip
+            dist/checksums.txt
