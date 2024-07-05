@@ -21,7 +21,19 @@ jobs:
       - name: build and publish backend release
         uses: goreleaser/goreleaser-action@v5
         with:
-          args: release --clean
+          args: release --clean --snapshot
           distribution: goreleaser
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: upload artifacts - amd64
+        uses: actions/upload-artifact@v4.3.1
+        with:
+          name: node-healthchecker_linux_amd64
+          path: dist/node-healthchecker_linux_amd64/node-healthchecker
+
+      - name: upload artifacts - arm64
+        uses: actions/upload-artifact@v4.3.1
+        with:
+          name: node-healthchecker_linux_arm64
+          path: dist/node-healthchecker_linux_arm64/node-healthchecker
