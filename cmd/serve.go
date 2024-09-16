@@ -2,86 +2,171 @@ package main
 
 import (
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
-	"github.com/flashbots/node-healthchecker/healthchecker"
 	"github.com/urfave/cli/v2"
+
+	"github.com/flashbots/node-healthchecker/config"
+	"github.com/flashbots/node-healthchecker/server"
+	"github.com/flashbots/node-healthchecker/utils"
 )
 
-func CommandServe() *cli.Command {
-	var cfg healthchecker.Config
+const (
+	categoryHealthcheck           = "healthcheck"
+	categoryHealthcheckGeth       = "healthcheck geth"
+	categoryHealthcheckLighthouse = "healthcheck lighthouse"
+	categoryHealthcheckOpNode     = "healthcheck op-node"
+	categoryHealthcheckReth       = "healthcheck reth"
+	categoryHttpStatus            = "http status"
+	categoryServer                = "server"
+)
+
+func CommandServe(cfg *config.Config) *cli.Command {
+	ip := "0.0.0.0"
+	if ipv4, err := utils.PrivateIPv4(); err == nil {
+		ip = ipv4.String()
+	}
+	// healthcheck
+
+	healthcheckFlags := []cli.Flag{
+		&cli.DurationFlag{
+			Category:    strings.ToUpper(categoryHealthcheck),
+			Destination: &cfg.Healthcheck.Timeout,
+			EnvVars:     []string{envPrefix + strings.ToUpper(categoryHealthcheck) + "_TIMEOUT"},
+			Name:        categoryHealthcheck + "-timeout",
+			Usage:       "maximum `duration` of a single healthcheck",
+			Value:       time.Second,
+		},
+	}
+
+	// healthcheck geth
+
+	healthcheckGethFlags := []cli.Flag{
+		&cli.StringFlag{
+			Category:    strings.ToUpper(categoryHealthcheckGeth),
+			Destination: &cfg.HealthcheckGeth.BaseURL,
+			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ToUpper(categoryHealthcheckGeth), " ", "_") + "_BASE_URL"},
+			Name:        strings.ReplaceAll(categoryHealthcheckGeth, " ", "-") + "-base-url",
+			Usage:       "base `url` of geth's HTTP-RPC endpoint",
+		},
+	}
+
+	// healthcheck lighthouse
+
+	healthcheckLighthouseFlags := []cli.Flag{
+		&cli.StringFlag{
+			Category:    strings.ToUpper(categoryHealthcheckLighthouse),
+			Destination: &cfg.HealthcheckLighthouse.BaseURL,
+			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ToUpper(categoryHealthcheckLighthouse), " ", "_") + "_BASE_URL"},
+			Name:        strings.ReplaceAll(categoryHealthcheckLighthouse, " ", "-") + "-base-url",
+			Usage:       "base `url` of lighthouse's HTTP-API endpoint",
+		},
+	}
+
+	// healthcheck op-node
+
+	healthcheckOpNodeFlags := []cli.Flag{
+		&cli.StringFlag{
+			Category:    strings.ToUpper(categoryHealthcheckOpNode),
+			Destination: &cfg.HealthcheckOpNode.BaseURL,
+			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ReplaceAll(strings.ToUpper(categoryHealthcheckOpNode), " ", "_"), "-", "_") + "_BASE_URL"},
+			Name:        strings.ReplaceAll(categoryHealthcheckOpNode, " ", "-") + "-base-url",
+			Usage:       "base `url` of op-node's RPC endpoint",
+		},
+
+		&cli.Uint64Flag{
+			Category:    strings.ToUpper(categoryHealthcheckOpNode),
+			Destination: &cfg.HealthcheckOpNode.ConfirmationDistance,
+			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ReplaceAll(strings.ToUpper(categoryHealthcheckOpNode), " ", "_"), "-", "_") + "_CONF_DISTANCE"},
+			Name:        strings.ReplaceAll(categoryHealthcheckOpNode, " ", "-") + "-conf-distance",
+			Usage:       "number of l1 blocks that verifier keeps distance from the l1 head before deriving l2 data from",
+			Value:       0,
+		},
+	}
+
+	// healthcheck reth
+
+	healthcheckRethFlags := []cli.Flag{
+		&cli.StringFlag{
+			Category:    strings.ToUpper(categoryHealthcheckReth),
+			Destination: &cfg.HealthcheckReth.BaseURL,
+			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ToUpper(categoryHealthcheckReth), " ", "_") + "_BASE_URL"},
+			Name:        strings.ReplaceAll(categoryHealthcheckReth, " ", "-") + "-base-url",
+			Usage:       "base `url` of reth's HTTP-RPC endpoint",
+		},
+	}
+
+	// http status
+
+	httpStatusFlags := []cli.Flag{
+		&cli.IntFlag{
+			Category:    strings.ToUpper(categoryHttpStatus),
+			Destination: &cfg.HttpStatus.Ok,
+			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ToUpper(categoryHttpStatus), " ", "_") + "_OK"},
+			Name:        strings.ReplaceAll(categoryHttpStatus, " ", "-") + "-ok",
+			Usage:       "http `status` to report on good healthchecks",
+			Value:       http.StatusOK,
+		},
+
+		&cli.IntFlag{
+			Category:    strings.ToUpper(categoryHttpStatus),
+			Destination: &cfg.HttpStatus.Warning,
+			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ToUpper(categoryHttpStatus), " ", "_") + "_WARNING"},
+			Name:        strings.ReplaceAll(categoryHttpStatus, " ", "-") + "-warning",
+			Usage:       "http `status` to report on healthchecks with warnings",
+			Value:       http.StatusAccepted,
+		},
+
+		&cli.IntFlag{
+			Category:    strings.ToUpper(categoryHttpStatus),
+			Destination: &cfg.HttpStatus.Error,
+			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ToUpper(categoryHttpStatus), " ", "_") + "_ERROR"},
+			Name:        strings.ReplaceAll(categoryHttpStatus, " ", "-") + "-error",
+			Usage:       "http `status` to report on healthchecks with errors",
+			Value:       http.StatusInternalServerError,
+		},
+	}
+
+	// server
+
+	serverFlags := []cli.Flag{
+		&cli.StringFlag{
+			Category:    strings.ToUpper(categoryServer),
+			Destination: &cfg.Server.ListenAddress,
+			EnvVars:     []string{envPrefix + strings.ToUpper(categoryServer) + "_LISTEN_ADDRESS"},
+			Name:        categoryServer + "-listen-address",
+			Usage:       "`host:port` for the server to listen on",
+			Value:       ip + ":8080",
+		},
+	}
 
 	return &cli.Command{
 		Name:  "serve",
-		Usage: "run the healthcheck server",
+		Usage: "run node-healthchecker server",
 
-		Flags: []cli.Flag{
+		Flags: slices.Concat(
+			healthcheckFlags,
+			healthcheckGethFlags,
+			healthcheckLighthouseFlags,
+			healthcheckOpNodeFlags,
+			healthcheckRethFlags,
+			httpStatusFlags,
+			serverFlags,
+		),
 
-			// Serving
-
-			&cli.StringFlag{
-				Category:    "Serving:",
-				Destination: &cfg.ServeAddress,
-				Name:        "serve-address",
-				Usage:       "respond to health-checks at the address of `host:port`",
-				Value:       "0.0.0.0:8080",
-			},
-
-			&cli.DurationFlag{
-				Category:    "Serving:",
-				Destination: &cfg.Timeout,
-				Name:        "timeout",
-				Usage:       "healthcheck(s) timeout `duration`",
-				Value:       time.Second,
-			},
-
-			&cli.IntFlag{
-				Category:    "Serving:",
-				Destination: &cfg.StatusOk,
-				Name:        "status-ok",
-				Usage:       "http `status` to report for good healthchecks",
-				Value:       http.StatusOK,
-			},
-
-			&cli.IntFlag{
-				Category:    "Serving:",
-				Destination: &cfg.StatusWarning,
-				Name:        "status-warning",
-				Usage:       "http `status` to report for warning healthchecks",
-				Value:       http.StatusAccepted,
-			},
-
-			&cli.IntFlag{
-				Category:    "Serving:",
-				Destination: &cfg.StatusError,
-				Name:        "status-error",
-				Usage:       "http `status` to report for error healthchecks",
-				Value:       http.StatusInternalServerError,
-			},
-
-			// Monitoring
-
-			&cli.StringFlag{
-				Category:    "Monitoring:",
-				Destination: &cfg.MonitorGethURL,
-				Name:        "monitor-geth-url",
-				Usage:       "monitor geth sync-status via RPC at specified `URL`",
-			},
-
-			&cli.StringFlag{
-				Category:    "Monitoring:",
-				Destination: &cfg.MonitorLighthouseURL,
-				Name:        "monitor-lighthouse-url",
-				Usage:       "monitor lighthouse sync-status via RPC at specified `URL`",
-			},
+		Before: func(ctx *cli.Context) error {
+			// TODO: validate inputs
+			return nil
 		},
 
-		Action: func(ctx *cli.Context) error {
-			h, err := healthchecker.New(&cfg)
+		Action: func(_ *cli.Context) error {
+			s, err := server.New(cfg)
 			if err != nil {
 				return err
 			}
-			return h.Serve()
+			return s.Run()
 		},
 	}
 }

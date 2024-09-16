@@ -4,16 +4,12 @@ env:
 builds:
   - main: ./cmd
     ldflags:
-      - -X main.version={{.Version}}
+      - -s
+      - -w
+      - -X main.version={{ .Version }}
     targets:
-      - darwin_amd64
-      - darwin_arm64
-      - linux_386
       - linux_amd64
-      - linux_arm
       - linux_arm64
-      - windows_386
-      - windows_amd64
 
 archives:
   - id: zip
@@ -27,3 +23,28 @@ checksum:
 
 release:
   prerelease: auto
+
+dockers:
+  - dockerfile: Dockerfile.goreleaser
+    goarch: amd64
+    goos: linux
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/amd64
+    image_templates:
+      - "ghcr.io/flashbots/node-healthchecker:{{ .Tag }}-amd64"
+
+  - dockerfile: Dockerfile.goreleaser
+    goarch: arm64
+    goos: linux
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/arm64
+    image_templates:
+      - "ghcr.io/flashbots/node-healthchecker:{{ .Tag }}-arm64"
+
+docker_manifests:
+  - name_template: "ghcr.io/flashbots/node-healthchecker:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/flashbots/node-healthchecker:{{ .Tag }}-amd64"
+      - "ghcr.io/flashbots/node-healthchecker:{{ .Tag }}-arm64"

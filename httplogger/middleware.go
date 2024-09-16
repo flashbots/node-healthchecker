@@ -6,9 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/flashbots/node-healthchecker/logutils"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+
+	"github.com/flashbots/node-healthchecker/logutils"
 )
 
 func Middleware(logger *zap.Logger, next http.Handler) http.Handler {
@@ -46,7 +47,7 @@ func Middleware(logger *zap.Logger, next http.Handler) http.Handler {
 
 		// Passing request stats both in-message (for the human reader)
 		// as well as inside the structured log (for the machine parser)
-		logger.Info(fmt.Sprintf("%s %s %d", r.Method, r.URL.EscapedPath(), wrapped.Status()),
+		logger.Debug(fmt.Sprintf("%s %s %d", r.Method, r.URL.EscapedPath(), wrapped.Status()),
 			zap.Int("durationMs", int(time.Since(start).Milliseconds())),
 			zap.Int("status", wrapped.Status()),
 			zap.String("httpRequestID", httpRequestID),

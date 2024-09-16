@@ -3,91 +3,78 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/urfave/cli/v2"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
+
+	"github.com/flashbots/node-healthchecker/config"
+	"github.com/flashbots/node-healthchecker/logutils"
 )
 
 var (
 	version = "development"
 )
 
+const (
+	envPrefix = "NH_"
+)
+
 func main() {
-	var logFormat, logLevel string
+	cfg := &config.Config{}
+
+	flags := []cli.Flag{
+		&cli.StringFlag{
+			Destination: &cfg.Log.Level,
+			EnvVars:     []string{envPrefix + "LOG_LEVEL"},
+			Name:        "log-level",
+			Usage:       "logging level",
+			Value:       "info",
+		},
+
+		&cli.StringFlag{
+			Destination: &cfg.Log.Mode,
+			EnvVars:     []string{envPrefix + "LOG_MODE"},
+			Name:        "log-mode",
+			Usage:       "logging mode",
+			Value:       "prod",
+		},
+	}
+
+	commands := []*cli.Command{
+		CommandServe(cfg),
+		CommandHelp(cfg),
+	}
 
 	app := &cli.App{
 		Name:    "node-healthchecker",
-		Usage:   "Aggregates complex health-checks of a blockchain node into a simple http endpoint",
+		Usage:   "Report the sync-status of a blockchain node as HTTP status",
 		Version: version,
 
-		Action: func(c *cli.Context) error {
-			return cli.ShowAppHelp(c)
-		},
+		Flags:          flags,
+		Commands:       commands,
+		DefaultCommand: commands[0].Name,
 
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Destination: &logLevel,
-				EnvVars:     []string{"LOG_LEVEL"},
-				Name:        "log-level",
-				Usage:       "logging level",
-				Value:       "info",
-			},
-
-			&cli.StringFlag{
-				Destination: &logFormat,
-				EnvVars:     []string{"LOG_MODE"},
-				Name:        "log-mode",
-				Usage:       "logging mode",
-				Value:       "prod",
-			},
-		},
-
-		Before: func(ctx *cli.Context) error {
-			err := setupLogger(logLevel, logFormat)
+		Before: func(_ *cli.Context) error {
+			// setup logger
+			l, err := logutils.NewLogger(&cfg.Log)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to configure the logging: %s\n", err)
+				return err
 			}
-			return err
+			zap.ReplaceGlobals(l)
+
+			return nil
 		},
 
-		Commands: []*cli.Command{
-			CommandServe(),
+		Action: func(clictx *cli.Context) error {
+			return cli.ShowAppHelp(clictx)
 		},
 	}
 
 	defer func() {
-		zap.L().Sync()
+		zap.L().Sync() //nolint:errcheck
 	}()
 	if err := app.Run(os.Args); err != nil {
-		zap.L().Error("Failed with error", zap.Error(err))
+		fmt.Fprintf(os.Stderr, "\nFailed with error:\n\n%s\n\n", err.Error())
+		os.Exit(1)
 	}
-}
-
-func setupLogger(level, mode string) error {
-	var config zap.Config
-	switch strings.ToLower(mode) {
-	case "dev":
-		config = zap.NewDevelopmentConfig()
-	case "prod":
-		config = zap.NewProductionConfig()
-	default:
-		return fmt.Errorf("invalid log-mode '%s'", mode)
-	}
-	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-
-	logLevel, err := zap.ParseAtomicLevel(level)
-	if err != nil {
-		return fmt.Errorf("invalid log-level '%s': %w", level, err)
-	}
-	config.Level = logLevel
-
-	l, err := config.Build()
-	if err != nil {
-		return fmt.Errorf("failed to build the logger: %w", err)
-	}
-	zap.ReplaceGlobals(l)
-
-	return nil
 }

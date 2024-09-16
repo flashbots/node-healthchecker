@@ -6,8 +6,9 @@ Composite health (sync status) checker for blockchain nodes.
 
 ```shell
 ./node-healthchecker serve \
-  --monitor-geth-url http://127.0.0.1:8545 \
-  --monitor-lighthouse-url http://127.0.0.1:3500
+  --healthcheck-geth-base-url http://127.0.0.1:8545 \
+  --healthcheck-lighthouse-base-url http://127.0.0.1:3500 \
+  --server-listen-address 127.0.0.1:8080
 ```
 
 ```shell

@@ -1,12 +1,15 @@
-# Built binaries
+# builds
 
-bin/*
-!bin/.gitkeep
+/bin/*
+!/bin/.gitkeep
+dist
 
-# Goreleaser artifacts
+# ide
 
-dist/*
-
-# VS Code
-
+.idea
 .vscode
+*.code-workspace
+
+# temporary files
+
+.temp

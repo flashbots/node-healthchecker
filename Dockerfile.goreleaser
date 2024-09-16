@@ -1,0 +1,9 @@
+# stage: run
+
+FROM gcr.io/distroless/static-debian12 as runner
+
+WORKDIR /app
+
+COPY node-healthchecker ./
+
+ENTRYPOINT [ "./node-healthchecker" ]
