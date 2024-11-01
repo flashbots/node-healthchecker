@@ -58,8 +58,9 @@ GLOBAL OPTIONS:
 OPTIONS:
    HEALTHCHECK
 
-   --healthcheck-cache-timeout duration  re-use healthcheck results for the specified duration (default: disabled) [$NH_HEALTHCHECK_CACHE_TIMEOUT]
-   --healthcheck-timeout duration        maximum duration of a single healthcheck (default: 1s) [$NH_HEALTHCHECK_TIMEOUT]
+   --healthcheck-block-age-threshold duration  monitor the age of latest block and report unhealthy if it's over specified duration (default: disabled) [$NH_HEALTHCHECK_BLOCK_AGE_THRESHOLD]
+   --healthcheck-cache-cool-off duration       re-use healthcheck results for the specified duration (default: 750ms) [$NH_HEALTHCHECK_CACHE_COOL_OFF]
+   --healthcheck-timeout duration              maximum duration of a single healthcheck (default: 1s) [$NH_HEALTHCHECK_TIMEOUT]
 
    --healthcheck-timeout duration  maximum duration of a single healthcheck (default: 1s) [$NH_HEALTHCHECK_TIMEOUT]
 
