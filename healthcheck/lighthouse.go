@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
+	"time"
 
 	"github.com/flashbots/node-healthchecker/config"
 )
@@ -66,95 +68,182 @@ type lighthouseStateAsStruct struct {
 	} `json:"data"`
 }
 
+type lighthouseBeaconBlocksHead struct {
+	Data struct {
+		Message struct {
+			Slot string `json:"slot"`
+
+			Body struct {
+				ExecutionPayload struct {
+					Timestamp string `json:"timestamp"`
+				} `json:"execution_payload"`
+			} `json:"body"`
+		} `json:"message"`
+	} `json:"data"`
+}
+
 func Lighthouse(ctx context.Context, cfg *config.HealthcheckLighthouse) *Result {
-	// https://lighthouse-book.sigmaprime.io/api-lighthouse.html#lighthousesyncing
-	// https://github.com/sigp/lighthouse/blob/v4.5.0/beacon_node/lighthouse_network/src/types/sync_state.rs#L6-L27
+	{ // lighthouse/syncing
 
-	_url, err := url.JoinPath(cfg.BaseURL, "lighthouse/syncing")
-	if err != nil {
-		return &Result{Err: err}
-	}
+		// https://lighthouse-book.sigmaprime.io/api-lighthouse.html#lighthousesyncing
+		// https://github.com/sigp/lighthouse/blob/v4.5.0/beacon_node/lighthouse_network/src/types/sync_state.rs#L6-L27
 
-	req, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodGet,
-		_url,
-		nil,
-	)
-	if err != nil {
-		return &Result{Err: err}
-	}
-	req.Header.Set("accept", "application/json")
+		_url, err := url.JoinPath(cfg.BaseURL, "lighthouse/syncing")
+		if err != nil {
+			return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+		}
 
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return &Result{Err: err}
-	}
-	defer res.Body.Close()
+		req, err := http.NewRequestWithContext(
+			ctx,
+			http.MethodGet,
+			_url,
+			nil,
+		)
+		if err != nil {
+			return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+		}
+		req.Header.Set("accept", "application/json")
 
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return &Result{Err: err}
-	}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+		}
+		defer res.Body.Close()
 
-	if res.StatusCode != http.StatusOK {
-		return &Result{Err: fmt.Errorf("unexpected HTTP status '%d': %s",
-			res.StatusCode,
-			string(body),
-		)}
-	}
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+		}
 
-	var state lighthouseStateAsString
-	if err := json.Unmarshal(body, &state); err != nil {
-		var state lighthouseStateAsStruct
-		if err2 := json.Unmarshal(body, &state); err2 != nil {
-			return &Result{Err: fmt.Errorf("failed to parse JSON body '%s': %w",
+		if res.StatusCode != http.StatusOK {
+			return &Result{Err: fmt.Errorf("lighthouse: unexpected HTTP status '%d': %s",
+				res.StatusCode,
 				string(body),
-				errors.Join(err, err2),
 			)}
 		}
-		switch {
-		case state.Data.BackFillSyncing != nil:
-			//
-			// BackBillSyncing is "ok" because that's the state lighthouse
-			// switches to after checkpoint sync is complete.
-			//
-			// See: https://lighthouse-book.sigmaprime.io/checkpoint-sync.html#backfilling-blocks
-			//
-			return &Result{
-				Ok: true,
-				Err: fmt.Errorf("lighthouse is in 'BackFillSyncing' state (completed: %d, remaining: %d)",
-					state.Data.BackFillSyncing.Completed,
-					state.Data.BackFillSyncing.Remaining,
-				),
-			}
-		case state.Data.SyncingFinalized != nil:
-			return &Result{
-				Err: fmt.Errorf("lighthouse is in 'SyncingFinalized' state (start_slot: '%s', target_slot: '%s')",
-					state.Data.SyncingFinalized.StartSlot,
-					state.Data.SyncingFinalized.TargetSlot,
-				),
-			}
-		case state.Data.SyncingHead != nil:
-			return &Result{
-				Err: fmt.Errorf("lighthouse is in 'SyncingHead' state (start_slot: '%s', target_slot: '%s')",
-					state.Data.SyncingHead.StartSlot,
-					state.Data.SyncingHead.TargetSlot,
-				),
-			}
-		default:
-			return &Result{
-				Err: fmt.Errorf("lighthouse is in unrecognised state: %s",
+
+		var state lighthouseStateAsString
+		if err := json.Unmarshal(body, &state); err != nil {
+			var state lighthouseStateAsStruct
+			if err2 := json.Unmarshal(body, &state); err2 != nil {
+				return &Result{Err: fmt.Errorf("lighthouse: failed to parse JSON body '%s': %w",
 					string(body),
+					errors.Join(err, err2),
+				)}
+			}
+			switch {
+			case state.Data.BackFillSyncing != nil:
+				//
+				// BackBillSyncing is "ok" because that's the state lighthouse
+				// switches to after checkpoint sync is complete.
+				//
+				// See: https://lighthouse-book.sigmaprime.io/checkpoint-sync.html#backfilling-blocks
+				//
+				return &Result{
+					Ok: true,
+					Err: fmt.Errorf("lighthouse: is in 'BackFillSyncing' state (completed: %d, remaining: %d)",
+						state.Data.BackFillSyncing.Completed,
+						state.Data.BackFillSyncing.Remaining,
+					),
+				}
+			case state.Data.SyncingFinalized != nil:
+				return &Result{
+					Err: fmt.Errorf("lighthouse: is in 'SyncingFinalized' state (start_slot: '%s', target_slot: '%s')",
+						state.Data.SyncingFinalized.StartSlot,
+						state.Data.SyncingFinalized.TargetSlot,
+					),
+				}
+			case state.Data.SyncingHead != nil:
+				return &Result{
+					Err: fmt.Errorf("lighthouse: is in 'SyncingHead' state (start_slot: '%s', target_slot: '%s')",
+						state.Data.SyncingHead.StartSlot,
+						state.Data.SyncingHead.TargetSlot,
+					),
+				}
+			default:
+				return &Result{
+					Err: fmt.Errorf("lighthouse: is in unrecognised state: %s",
+						string(body),
+					),
+				}
+			}
+		}
+		if state.Data != "Synced" {
+			return &Result{
+				Err: fmt.Errorf("lighthouse: is not in synced state: %s",
+					state.Data,
 				),
 			}
 		}
 	}
-	if state.Data != "Synced" {
-		return &Result{
-			Err: fmt.Errorf("lighthouse is not in synced state: %s",
-				state.Data,
-			),
+
+	{ // eth/v2/beacon/blocks/head
+		if cfg.BlockAgeThreshold != 0 {
+			// https://github.com/sigp/lighthouse/blob/v4.5.0/consensus/types/src/execution_payload.rs#L50-L86
+
+			_url, err := url.JoinPath(cfg.BaseURL, "eth/v2/beacon/blocks/head")
+			if err != nil {
+				return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+			}
+
+			req, err := http.NewRequestWithContext(
+				ctx,
+				http.MethodGet,
+				_url,
+				nil,
+			)
+			if err != nil {
+				return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+			}
+			req.Header.Set("accept", "application/json")
+
+			now := time.Now()
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+			}
+			defer res.Body.Close()
+
+			body, err := io.ReadAll(res.Body)
+			if err != nil {
+				return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+			}
+
+			if res.StatusCode != http.StatusOK {
+				return &Result{Err: fmt.Errorf("lighthouse: unexpected HTTP status '%d': %s",
+					res.StatusCode,
+					string(body),
+				)}
+			}
+
+			var head lighthouseBeaconBlocksHead
+			if err := json.Unmarshal(body, &head); err != nil {
+				return &Result{Err: fmt.Errorf("lighthouse: failed to parse JSON body '%s': %w",
+					string(body),
+					err,
+				)}
+			}
+
+			epoch, err := strconv.Atoi(head.Data.Message.Body.ExecutionPayload.Timestamp)
+			if err != nil {
+				return &Result{Err: fmt.Errorf("lighthouse: failed to parse timestamp '%s': %w",
+					head.Data.Message.Body.ExecutionPayload.Timestamp,
+					err,
+				)}
+			}
+			timestamp := time.Unix(int64(epoch), 0)
+			age := now.Sub(timestamp)
+
+			if age > cfg.BlockAgeThreshold {
+				return &Result{
+					Err: fmt.Errorf("lighthouse: beacon head timestamp '%s' (slot '%s') is too old: %s > %s",
+						head.Data.Message.Body.ExecutionPayload.Timestamp,
+						head.Data.Message.Slot,
+						age,
+						cfg.BlockAgeThreshold,
+					),
+				}
+			}
 		}
 	}
 

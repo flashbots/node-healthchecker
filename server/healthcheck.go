@@ -13,18 +13,18 @@ import (
 )
 
 func (s *Server) healthcheck(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.Healthcheck.CacheTimeout != 0 {
+	if s.cfg.Healthcheck.CacheCoolOff != 0 {
 		s.cache.mx.Lock()
 		defer s.cache.mx.Unlock()
 
 		now := time.Now()
 
 		if s.cache.expiry.After(now) {
-			s.report(w, r, s.cache.errs, s.cache.wrns)
+			s.report(w, r, true, s.cache.errs, s.cache.wrns)
 			return
 		}
 
-		s.cache.expiry = now.Add(s.cfg.Healthcheck.CacheTimeout)
+		s.cache.expiry = now.Add(s.cfg.Healthcheck.CacheCoolOff)
 	}
 
 	count := len(s.monitors)
@@ -53,16 +53,20 @@ func (s *Server) healthcheck(w http.ResponseWriter, r *http.Request) {
 	}
 	close(results)
 
-	s.report(w, r, errs, wrns)
+	s.report(w, r, false, errs, wrns)
 
-	if s.cfg.Healthcheck.CacheTimeout != 0 {
+	if s.cfg.Healthcheck.CacheCoolOff != 0 {
 		s.cache.errs = errs
-		s.cache.wrns = wrns
+		s.cache.wrns = append(wrns, errors.New("cached healthcheck"))
 	}
 }
 
-func (s *Server) report(w http.ResponseWriter, r *http.Request, errs, wrns []error) {
+func (s *Server) report(w http.ResponseWriter, r *http.Request, cached bool, errs, wrns []error) {
 	l := logutils.LoggerFromRequest(r)
+
+	if cached {
+		l.Debug("Sending cached healthcheck")
+	}
 
 	switch {
 	case len(errs) == 0 && len(wrns) == 0:
@@ -93,17 +97,19 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request, errs, wrns []err
 			}
 		}
 
-		l.Warn("Healthcheck encountered upstream error(s)",
-			zap.Error(errors.Join(errs...)),
-			zap.Int("http_status", s.cfg.HttpStatus.Error),
-		)
+		if !cached {
+			l.Warn("Healthcheck encountered upstream error(s)",
+				zap.Error(errors.Join(errs...)),
+				zap.Int("http_status", s.cfg.HttpStatus.Error),
+			)
+		}
 
 	case len(errs) == 0 && len(wrns) > 0:
 		w.WriteHeader(s.cfg.HttpStatus.Warning)
 		w.Header().Set("Content-Type", "application/text")
 
 		for idx, warn := range wrns {
-			line := fmt.Sprintf("%d: %s\n", idx, warn)
+			line := fmt.Sprintf("%d: warning: %s\n", idx, warn)
 			_, err := w.Write([]byte(line))
 			if err != nil {
 				l.Error("Failed to write the response body",
@@ -112,9 +118,11 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request, errs, wrns []err
 			}
 		}
 
-		l.Warn("Healthcheck encountered upstream error(s)",
-			zap.Error(errors.Join(errs...)),
-			zap.Int("http_status", s.cfg.HttpStatus.Warning),
-		)
+		if !cached {
+			l.Warn("Healthcheck encountered upstream error(s)",
+				zap.Error(errors.Join(errs...)),
+				zap.Int("http_status", s.cfg.HttpStatus.Warning),
+			)
+		}
 	}
 }

@@ -33,12 +33,21 @@ func CommandServe(cfg *config.Config) *cli.Command {
 	healthcheckFlags := []cli.Flag{
 		&cli.DurationFlag{
 			Category:    strings.ToUpper(categoryHealthcheck),
-			Destination: &cfg.Healthcheck.CacheTimeout,
+			Destination: &cfg.Healthcheck.BlockAgeThreshold,
 			DefaultText: "disabled",
-			EnvVars:     []string{envPrefix + strings.ToUpper(categoryHealthcheck) + "_CACHE_TIMEOUT"},
-			Name:        categoryHealthcheck + "-cache-timeout",
-			Usage:       "re-use healthcheck results for the specified `duration`",
+			EnvVars:     []string{envPrefix + strings.ToUpper(categoryHealthcheck) + "_BLOCK_AGE_THRESHOLD"},
+			Name:        categoryHealthcheck + "-block-age-threshold",
+			Usage:       "monitor the age of latest block and report unhealthy if it's over specified `duration`",
 			Value:       0,
+		},
+
+		&cli.DurationFlag{
+			Category:    strings.ToUpper(categoryHealthcheck),
+			Destination: &cfg.Healthcheck.CacheCoolOff,
+			EnvVars:     []string{envPrefix + strings.ToUpper(categoryHealthcheck) + "_CACHE_COOL_OFF"},
+			Name:        categoryHealthcheck + "-cache-cool-off",
+			Usage:       "re-use healthcheck results for the specified `duration`",
+			Value:       750 * time.Millisecond,
 		},
 
 		&cli.DurationFlag{
@@ -167,7 +176,9 @@ func CommandServe(cfg *config.Config) *cli.Command {
 		),
 
 		Before: func(ctx *cli.Context) error {
-			// TODO: validate inputs
+			if err := cfg.Preprocess(); err != nil {
+				return err
+			}
 			return nil
 		},
 

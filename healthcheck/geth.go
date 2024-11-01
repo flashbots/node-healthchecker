@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/flashbots/node-healthchecker/config"
 )
@@ -60,64 +63,149 @@ type gethIsSyncing struct {
 	} `json:"result"`
 }
 
+// gethLatestBlock is the latest block as reported by geth
+type gethLatestBlock struct {
+	Result struct {
+		Timestamp string `json:"timestamp"`
+	} `json:"result"`
+}
+
 func Geth(ctx context.Context, cfg *config.HealthcheckGeth) *Result {
-	// https://ethereum.org/en/developers/docs/apis/json-rpc/#eth_syncing
-	// https://github.com/ethereum/go-ethereum/blob/v1.14.8/interfaces.go#L98-L127
+	{ // eth_syncing
 
-	const query = `{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":0}`
+		// https://ethereum.org/en/developers/docs/apis/json-rpc/#eth_syncing
+		// https://github.com/ethereum/go-ethereum/blob/v1.14.8/interfaces.go#L98-L127
 
-	req, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodGet,
-		cfg.BaseURL,
-		bytes.NewReader([]byte(query)),
-	)
-	if err != nil {
-		return &Result{Err: err}
-	}
-	req.Header.Set("accept", "application/json")
-	req.Header.Set("content-type", "application/json")
+		const ethSyncing = `{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":0}`
 
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return &Result{Err: err}
-	}
-	defer res.Body.Close()
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return &Result{Err: err}
-	}
-
-	if res.StatusCode != http.StatusOK {
-		return &Result{
-			Err: fmt.Errorf("unexpected HTTP status '%d': %s",
-				res.StatusCode,
-				string(body),
-			),
+		req, err := http.NewRequestWithContext(
+			ctx,
+			http.MethodGet,
+			cfg.BaseURL,
+			bytes.NewReader([]byte(ethSyncing)),
+		)
+		if err != nil {
+			return &Result{Err: fmt.Errorf("geth: %w", err)}
 		}
-	}
+		req.Header.Set("accept", "application/json")
+		req.Header.Set("content-type", "application/json")
 
-	var status gethIsNotSyncing
-	if err := json.Unmarshal(body, &status); err != nil {
-		var status gethIsSyncing
-		if err2 := json.Unmarshal(body, &status); err2 != nil {
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return &Result{Err: fmt.Errorf("geth: %w", err)}
+		}
+		defer res.Body.Close()
+
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			return &Result{Err: fmt.Errorf("geth: %w", err)}
+		}
+
+		if res.StatusCode != http.StatusOK {
 			return &Result{
-				Err: fmt.Errorf("failed to parse JSON body '%s': %w",
+				Err: fmt.Errorf("geth: unexpected HTTP status '%d': %s",
+					res.StatusCode,
 					string(body),
-					errors.Join(err, err2),
 				),
 			}
 		}
-		return &Result{
-			Err: fmt.Errorf("geth is still syncing: Current:=%s, Highest=%s",
-				status.Result.CurrentBlock,
-				status.Result.HighestBlock,
-			),
+
+		var status gethIsNotSyncing
+		if err := json.Unmarshal(body, &status); err != nil {
+			var status gethIsSyncing
+			if err2 := json.Unmarshal(body, &status); err2 != nil {
+				return &Result{
+					Err: fmt.Errorf("geth: failed to parse JSON body '%s': %w",
+						string(body),
+						errors.Join(err, err2),
+					),
+				}
+			}
+			return &Result{
+				Err: fmt.Errorf("geth: still syncing (current: '%s', highest: '%s')",
+					status.Result.CurrentBlock,
+					status.Result.HighestBlock,
+				),
+			}
+		}
+		if status.Result { // i.e. it's syncing
+			return &Result{Err: errors.New("geth: still syncing")}
 		}
 	}
-	if status.Result { // i.e. it's syncing
-		return &Result{Err: errors.New("geth is (still) syncing")}
+
+	{ // eth_getBlockByNumber
+		const ethGetBlockByNumber = `{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["latest",false],"id":0}`
+
+		if cfg.BlockAgeThreshold != 0 {
+			req, err := http.NewRequestWithContext(
+				ctx,
+				http.MethodGet,
+				cfg.BaseURL,
+				bytes.NewReader([]byte(ethGetBlockByNumber)),
+			)
+			if err != nil {
+				return &Result{Err: err}
+			}
+			req.Header.Set("accept", "application/json")
+			req.Header.Set("content-type", "application/json")
+
+			now := time.Now()
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				return &Result{Err: err}
+			}
+			defer res.Body.Close()
+
+			body, err := io.ReadAll(res.Body)
+			if err != nil {
+				return &Result{Err: err}
+			}
+
+			if res.StatusCode != http.StatusOK {
+				return &Result{
+					Err: fmt.Errorf("geth: unexpected HTTP status '%d': %s",
+						res.StatusCode,
+						string(body),
+					),
+				}
+			}
+
+			var latestBlock gethLatestBlock
+			if err := json.Unmarshal(body, &latestBlock); err != nil {
+				return &Result{
+					Err: fmt.Errorf("geth: failed to parse JSON body '%s': %w",
+						string(body),
+						err,
+					),
+				}
+			}
+
+			epoch, err := strconv.ParseInt(
+				strings.TrimPrefix(latestBlock.Result.Timestamp, "0x"),
+				16, 64,
+			)
+			if err != nil {
+				return &Result{
+					Err: fmt.Errorf("geth: failed to parse hex timestamp '%s': %w",
+						latestBlock.Result.Timestamp,
+						err,
+					),
+				}
+			}
+
+			timestamp := time.Unix(epoch, 0)
+			age := now.Sub(timestamp)
+
+			if age > cfg.BlockAgeThreshold {
+				return &Result{
+					Err: fmt.Errorf("geth: latest block's timestamp '%s' is too old: %s > %s",
+						latestBlock.Result.Timestamp,
+						age,
+						cfg.BlockAgeThreshold,
+					),
+				}
+			}
+		}
 	}
 
 	return &Result{Ok: true}

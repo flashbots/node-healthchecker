@@ -2,6 +2,7 @@
 
 /bin/*
 !/bin/.gitkeep
+/cmd/__debug_*
 dist
 
 # ide

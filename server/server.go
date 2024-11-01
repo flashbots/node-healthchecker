@@ -64,7 +64,7 @@ func New(cfg *config.Config) (*Server, error) {
 		monitors: monitors,
 	}
 
-	if cfg.Healthcheck.CacheTimeout != 0 {
+	if cfg.Healthcheck.CacheCoolOff != 0 {
 		s.cache = &cache{}
 	}
 
