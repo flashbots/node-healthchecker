@@ -26,6 +26,7 @@ type Server struct {
 	logger *zap.Logger
 	server *http.Server
 
+	cache    *cache
 	monitors []healthcheck.Monitor
 }
 
@@ -61,6 +62,10 @@ func New(cfg *config.Config) (*Server, error) {
 		failure:  make(chan error, 1),
 		logger:   zap.L(),
 		monitors: monitors,
+	}
+
+	if cfg.Healthcheck.CacheTimeout != 0 {
+		s.cache = &cache{}
 	}
 
 	mux := http.NewServeMux()

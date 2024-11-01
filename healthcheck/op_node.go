@@ -16,7 +16,6 @@ import (
 // Values may be zeroed if not yet initialized.
 type opNodeSyncStatus struct {
 	Result struct {
-
 		// CurrentL1 is the L1 block that the derivation process is last idled at.
 		//
 		// This may not be fully derived into L2 data yet.

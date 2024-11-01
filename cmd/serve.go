@@ -33,6 +33,16 @@ func CommandServe(cfg *config.Config) *cli.Command {
 	healthcheckFlags := []cli.Flag{
 		&cli.DurationFlag{
 			Category:    strings.ToUpper(categoryHealthcheck),
+			Destination: &cfg.Healthcheck.CacheTimeout,
+			DefaultText: "disabled",
+			EnvVars:     []string{envPrefix + strings.ToUpper(categoryHealthcheck) + "_CACHE_TIMEOUT"},
+			Name:        categoryHealthcheck + "-cache-timeout",
+			Usage:       "re-use healthcheck results for the specified `duration`",
+			Value:       0,
+		},
+
+		&cli.DurationFlag{
+			Category:    strings.ToUpper(categoryHealthcheck),
 			Destination: &cfg.Healthcheck.Timeout,
 			EnvVars:     []string{envPrefix + strings.ToUpper(categoryHealthcheck) + "_TIMEOUT"},
 			Name:        categoryHealthcheck + "-timeout",
