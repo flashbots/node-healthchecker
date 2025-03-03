@@ -16,6 +16,7 @@ import (
 	"github.com/flashbots/node-healthchecker/healthcheck"
 	"github.com/flashbots/node-healthchecker/httplogger"
 	"github.com/flashbots/node-healthchecker/logutils"
+	"github.com/flashbots/node-healthchecker/metrics"
 )
 
 type Server struct {
@@ -28,30 +29,37 @@ type Server struct {
 
 	cache    *cache
 	monitors []healthcheck.Monitor
+
+	ok map[string]bool
 }
 
 func New(cfg *config.Config) (*Server, error) {
 	monitors := make([]healthcheck.Monitor, 0)
+	ok := make(map[string]bool, len(monitors))
 
 	if cfg.HealthcheckGeth.BaseURL != "" {
+		ok[healthcheck.SourceGeth] = true
 		monitors = append(monitors, func(ctx context.Context) *healthcheck.Result {
 			return healthcheck.Geth(ctx, &cfg.HealthcheckGeth)
 		})
 	}
 
 	if cfg.HealthcheckLighthouse.BaseURL != "" {
+		ok[healthcheck.SourceLighthouse] = true
 		monitors = append(monitors, func(ctx context.Context) *healthcheck.Result {
 			return healthcheck.Lighthouse(ctx, &cfg.HealthcheckLighthouse)
 		})
 	}
 
 	if cfg.HealthcheckOpNode.BaseURL != "" {
+		ok[healthcheck.SourceOpNode] = true
 		monitors = append(monitors, func(ctx context.Context) *healthcheck.Result {
 			return healthcheck.OpNode(ctx, &cfg.HealthcheckOpNode)
 		})
 	}
 
 	if cfg.HealthcheckReth.BaseURL != "" {
+		ok[healthcheck.SourceReth] = true
 		monitors = append(monitors, func(ctx context.Context) *healthcheck.Result {
 			return healthcheck.Reth(ctx, &cfg.HealthcheckReth)
 		})
@@ -62,6 +70,7 @@ func New(cfg *config.Config) (*Server, error) {
 		failure:  make(chan error, 1),
 		logger:   zap.L(),
 		monitors: monitors,
+		ok:       ok,
 	}
 
 	if cfg.Healthcheck.CacheCoolOff != 0 {
@@ -89,6 +98,10 @@ func New(cfg *config.Config) (*Server, error) {
 func (s *Server) Run() error {
 	l := s.logger
 	ctx := logutils.ContextWithLogger(context.Background(), l)
+
+	if err := metrics.Setup(ctx); err != nil {
+		return err
+	}
 
 	go func() { // run the server
 		l.Info("Blockchain node healthchecker server is going up...",

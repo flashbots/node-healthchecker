@@ -82,7 +82,9 @@ type lighthouseBeaconBlocksHead struct {
 	} `json:"data"`
 }
 
-func Lighthouse(ctx context.Context, cfg *config.HealthcheckLighthouse) *Result {
+func Lighthouse(ctx context.Context, cfg *config.HealthcheckLighthouse) (healthcheck *Result) {
+	healthcheck = &Result{Source: SourceLighthouse}
+
 	{ // lighthouse/syncing
 
 		// https://lighthouse-book.sigmaprime.io/api-lighthouse.html#lighthousesyncing
@@ -90,7 +92,8 @@ func Lighthouse(ctx context.Context, cfg *config.HealthcheckLighthouse) *Result 
 
 		_url, err := url.JoinPath(cfg.BaseURL, "lighthouse/syncing")
 		if err != nil {
-			return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+			healthcheck.Err = err
+			return
 		}
 
 		req, err := http.NewRequestWithContext(
@@ -100,36 +103,41 @@ func Lighthouse(ctx context.Context, cfg *config.HealthcheckLighthouse) *Result 
 			nil,
 		)
 		if err != nil {
-			return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+			healthcheck.Err = err
+			return
 		}
 		req.Header.Set("accept", "application/json")
 
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+			healthcheck.Err = err
+			return
 		}
 		defer res.Body.Close()
 
 		body, err := io.ReadAll(res.Body)
 		if err != nil {
-			return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+			healthcheck.Err = err
+			return
 		}
 
 		if res.StatusCode != http.StatusOK {
-			return &Result{Err: fmt.Errorf("lighthouse: unexpected HTTP status '%d': %s",
+			healthcheck.Err = fmt.Errorf("unexpected HTTP status '%d': %s",
 				res.StatusCode,
 				string(body),
-			)}
+			)
+			return
 		}
 
 		var state lighthouseStateAsString
 		if err := json.Unmarshal(body, &state); err != nil {
 			var state lighthouseStateAsStruct
 			if err2 := json.Unmarshal(body, &state); err2 != nil {
-				return &Result{Err: fmt.Errorf("lighthouse: failed to parse JSON body '%s': %w",
+				healthcheck.Err = fmt.Errorf("failed to parse JSON body '%s': %w",
 					string(body),
 					errors.Join(err, err2),
-				)}
+				)
+				return
 			}
 			switch {
 			case state.Data.BackFillSyncing != nil:
@@ -139,41 +147,36 @@ func Lighthouse(ctx context.Context, cfg *config.HealthcheckLighthouse) *Result 
 				//
 				// See: https://lighthouse-book.sigmaprime.io/checkpoint-sync.html#backfilling-blocks
 				//
-				return &Result{
-					Ok: true,
-					Err: fmt.Errorf("lighthouse: is in 'BackFillSyncing' state (completed: %d, remaining: %d)",
-						state.Data.BackFillSyncing.Completed,
-						state.Data.BackFillSyncing.Remaining,
-					),
-				}
+				healthcheck.Ok = true
+				healthcheck.Err = fmt.Errorf("is in 'BackFillSyncing' state (completed: %d, remaining: %d)",
+					state.Data.BackFillSyncing.Completed,
+					state.Data.BackFillSyncing.Remaining,
+				)
+				return
 			case state.Data.SyncingFinalized != nil:
-				return &Result{
-					Err: fmt.Errorf("lighthouse: is in 'SyncingFinalized' state (start_slot: '%s', target_slot: '%s')",
-						state.Data.SyncingFinalized.StartSlot,
-						state.Data.SyncingFinalized.TargetSlot,
-					),
-				}
+				healthcheck.Err = fmt.Errorf("is in 'SyncingFinalized' state (start_slot: '%s', target_slot: '%s')",
+					state.Data.SyncingFinalized.StartSlot,
+					state.Data.SyncingFinalized.TargetSlot,
+				)
+				return
 			case state.Data.SyncingHead != nil:
-				return &Result{
-					Err: fmt.Errorf("lighthouse: is in 'SyncingHead' state (start_slot: '%s', target_slot: '%s')",
-						state.Data.SyncingHead.StartSlot,
-						state.Data.SyncingHead.TargetSlot,
-					),
-				}
+				healthcheck.Err = fmt.Errorf("is in 'SyncingHead' state (start_slot: '%s', target_slot: '%s')",
+					state.Data.SyncingHead.StartSlot,
+					state.Data.SyncingHead.TargetSlot,
+				)
+				return
 			default:
-				return &Result{
-					Err: fmt.Errorf("lighthouse: is in unrecognised state: %s",
-						string(body),
-					),
-				}
+				healthcheck.Err = fmt.Errorf("is in unrecognised state: %s",
+					string(body),
+				)
+				return
 			}
 		}
 		if state.Data != "Synced" {
-			return &Result{
-				Err: fmt.Errorf("lighthouse: is not in synced state: %s",
-					state.Data,
-				),
-			}
+			healthcheck.Err = fmt.Errorf("is not in synced state: %s",
+				state.Data,
+			)
+			return
 		}
 	}
 
@@ -183,7 +186,8 @@ func Lighthouse(ctx context.Context, cfg *config.HealthcheckLighthouse) *Result 
 
 			_url, err := url.JoinPath(cfg.BaseURL, "eth/v2/beacon/blocks/head")
 			if err != nil {
-				return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+				healthcheck.Err = err
+				return
 			}
 
 			req, err := http.NewRequestWithContext(
@@ -193,59 +197,65 @@ func Lighthouse(ctx context.Context, cfg *config.HealthcheckLighthouse) *Result 
 				nil,
 			)
 			if err != nil {
-				return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+				healthcheck.Err = err
+				return
 			}
 			req.Header.Set("accept", "application/json")
 
 			now := time.Now()
 			res, err := http.DefaultClient.Do(req)
 			if err != nil {
-				return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+				healthcheck.Err = err
+				return
 			}
 			defer res.Body.Close()
 
 			body, err := io.ReadAll(res.Body)
 			if err != nil {
-				return &Result{Err: fmt.Errorf("lighthouse: %w", err)}
+				healthcheck.Err = err
+				return
 			}
 
 			if res.StatusCode != http.StatusOK {
-				return &Result{Err: fmt.Errorf("lighthouse: unexpected HTTP status '%d': %s",
+				healthcheck.Err = fmt.Errorf("unexpected HTTP status '%d': %s",
 					res.StatusCode,
 					string(body),
-				)}
+				)
+				return
 			}
 
 			var head lighthouseBeaconBlocksHead
 			if err := json.Unmarshal(body, &head); err != nil {
-				return &Result{Err: fmt.Errorf("lighthouse: failed to parse JSON body '%s': %w",
+				healthcheck.Err = fmt.Errorf("failed to parse JSON body '%s': %w",
 					string(body),
 					err,
-				)}
+				)
+				return
 			}
 
 			epoch, err := strconv.Atoi(head.Data.Message.Body.ExecutionPayload.Timestamp)
 			if err != nil {
-				return &Result{Err: fmt.Errorf("lighthouse: failed to parse timestamp '%s': %w",
+				healthcheck.Err = fmt.Errorf("failed to parse timestamp '%s': %w",
 					head.Data.Message.Body.ExecutionPayload.Timestamp,
 					err,
-				)}
+				)
+				return
 			}
 			timestamp := time.Unix(int64(epoch), 0)
 			age := now.Sub(timestamp)
 
 			if age > cfg.BlockAgeThreshold {
-				return &Result{
-					Err: fmt.Errorf("lighthouse: beacon head timestamp '%s' (slot '%s') is too old: %s > %s",
-						head.Data.Message.Body.ExecutionPayload.Timestamp,
-						head.Data.Message.Slot,
-						age,
-						cfg.BlockAgeThreshold,
-					),
-				}
+				healthcheck.Err = fmt.Errorf("beacon head timestamp '%s' (slot '%s') is too old: %s > %s",
+					head.Data.Message.Body.ExecutionPayload.Timestamp,
+					head.Data.Message.Slot,
+					age,
+					cfg.BlockAgeThreshold,
+				)
+				return
 			}
 		}
 	}
 
-	return &Result{Ok: true}
+	healthcheck.Ok = true
+	return
 }

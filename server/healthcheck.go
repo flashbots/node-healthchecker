@@ -5,10 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+
 	"time"
 
 	"github.com/flashbots/node-healthchecker/healthcheck"
 	"github.com/flashbots/node-healthchecker/logutils"
+	"github.com/flashbots/node-healthchecker/metrics"
+
+	"go.opentelemetry.io/otel/attribute"
+	otelapi "go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -39,15 +44,45 @@ func (s *Server) healthcheck(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
+	// 	metrics.HealthchecksOkCount.Add(context.Background(), 1,
+	// 	otelapi.WithAttributes(),
+	// )
+
 	errs := []error{}
 	wrns := []error{}
 	for count > 0 {
 		count--
 		if res := <-results; res != nil {
 			if !res.Ok {
-				errs = append(errs, res.Err)
-			} else if res.Err != nil {
-				wrns = append(wrns, res.Err)
+				errs = append(errs, res.Error())
+
+				metrics.HealthchecksNokCount.Add(context.Background(), 1, otelapi.WithAttributes(
+					attribute.KeyValue{Key: "healthcheck_source", Value: attribute.StringValue(res.Source)},
+				))
+
+				if s.ok[res.Source] {
+					s.ok[res.Source] = false
+					metrics.HealthchecksFlipCount.Add(context.Background(), 1, otelapi.WithAttributes(
+						attribute.KeyValue{Key: "healthcheck_source", Value: attribute.StringValue(res.Source)},
+					))
+				}
+
+				continue
+			}
+
+			if res.Err != nil {
+				wrns = append(wrns, res.Error())
+			}
+
+			metrics.HealthchecksOkCount.Add(context.Background(), 1, otelapi.WithAttributes(
+				attribute.KeyValue{Key: "healthcheck_source", Value: attribute.StringValue(res.Source)},
+			))
+
+			if !s.ok[res.Source] {
+				s.ok[res.Source] = true
+				metrics.HealthchecksFlipCount.Add(context.Background(), 1, otelapi.WithAttributes(
+					attribute.KeyValue{Key: "healthcheck_source", Value: attribute.StringValue(res.Source)},
+				))
 			}
 		}
 	}

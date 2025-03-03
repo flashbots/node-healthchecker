@@ -70,7 +70,9 @@ type gethLatestBlock struct {
 	} `json:"result"`
 }
 
-func Geth(ctx context.Context, cfg *config.HealthcheckGeth) *Result {
+func Geth(ctx context.Context, cfg *config.HealthcheckGeth) (healthcheck *Result) {
+	healthcheck = &Result{Source: SourceGeth}
+
 	{ // eth_syncing
 
 		// https://ethereum.org/en/developers/docs/apis/json-rpc/#eth_syncing
@@ -80,56 +82,56 @@ func Geth(ctx context.Context, cfg *config.HealthcheckGeth) *Result {
 
 		req, err := http.NewRequestWithContext(
 			ctx,
-			http.MethodGet,
+			http.MethodPost,
 			cfg.BaseURL,
 			bytes.NewReader([]byte(ethSyncing)),
 		)
 		if err != nil {
-			return &Result{Err: fmt.Errorf("geth: %w", err)}
+			healthcheck.Err = err
+			return
 		}
 		req.Header.Set("accept", "application/json")
 		req.Header.Set("content-type", "application/json")
 
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return &Result{Err: fmt.Errorf("geth: %w", err)}
+			healthcheck.Err = err
+			return
 		}
 		defer res.Body.Close()
 
 		body, err := io.ReadAll(res.Body)
 		if err != nil {
-			return &Result{Err: fmt.Errorf("geth: %w", err)}
+			healthcheck.Err = err
 		}
 
 		if res.StatusCode != http.StatusOK {
-			return &Result{
-				Err: fmt.Errorf("geth: unexpected HTTP status '%d': %s",
-					res.StatusCode,
-					string(body),
-				),
-			}
+			healthcheck.Err = fmt.Errorf("unexpected HTTP status '%d': %s",
+				res.StatusCode,
+				string(body),
+			)
+			return
 		}
 
 		var status gethIsNotSyncing
 		if err := json.Unmarshal(body, &status); err != nil {
 			var status gethIsSyncing
 			if err2 := json.Unmarshal(body, &status); err2 != nil {
-				return &Result{
-					Err: fmt.Errorf("geth: failed to parse JSON body '%s': %w",
-						string(body),
-						errors.Join(err, err2),
-					),
-				}
+				healthcheck.Err = fmt.Errorf("failed to parse JSON body '%s': %w",
+					string(body),
+					errors.Join(err, err2),
+				)
+				return
 			}
-			return &Result{
-				Err: fmt.Errorf("geth: still syncing (current: '%s', highest: '%s')",
-					status.Result.CurrentBlock,
-					status.Result.HighestBlock,
-				),
-			}
+			healthcheck.Err = fmt.Errorf("still syncing (current: '%s', highest: '%s')",
+				status.Result.CurrentBlock,
+				status.Result.HighestBlock,
+			)
+			return
 		}
 		if status.Result { // i.e. it's syncing
-			return &Result{Err: errors.New("geth: still syncing")}
+			healthcheck.Err = errors.New("still syncing")
+			return
 		}
 	}
 
@@ -139,12 +141,13 @@ func Geth(ctx context.Context, cfg *config.HealthcheckGeth) *Result {
 		if cfg.BlockAgeThreshold != 0 {
 			req, err := http.NewRequestWithContext(
 				ctx,
-				http.MethodGet,
+				http.MethodPost,
 				cfg.BaseURL,
 				bytes.NewReader([]byte(ethGetBlockByNumber)),
 			)
 			if err != nil {
-				return &Result{Err: err}
+				healthcheck.Err = err
+				return
 			}
 			req.Header.Set("accept", "application/json")
 			req.Header.Set("content-type", "application/json")
@@ -152,32 +155,32 @@ func Geth(ctx context.Context, cfg *config.HealthcheckGeth) *Result {
 			now := time.Now()
 			res, err := http.DefaultClient.Do(req)
 			if err != nil {
-				return &Result{Err: err}
+				healthcheck.Err = err
+				return
 			}
 			defer res.Body.Close()
 
 			body, err := io.ReadAll(res.Body)
 			if err != nil {
-				return &Result{Err: err}
+				healthcheck.Err = err
+				return
 			}
 
 			if res.StatusCode != http.StatusOK {
-				return &Result{
-					Err: fmt.Errorf("geth: unexpected HTTP status '%d': %s",
-						res.StatusCode,
-						string(body),
-					),
-				}
+				healthcheck.Err = fmt.Errorf("unexpected HTTP status '%d': %s",
+					res.StatusCode,
+					string(body),
+				)
+				return
 			}
 
 			var latestBlock gethLatestBlock
 			if err := json.Unmarshal(body, &latestBlock); err != nil {
-				return &Result{
-					Err: fmt.Errorf("geth: failed to parse JSON body '%s': %w",
-						string(body),
-						err,
-					),
-				}
+				healthcheck.Err = fmt.Errorf("failed to parse JSON body '%s': %w",
+					string(body),
+					err,
+				)
+				return
 			}
 
 			epoch, err := strconv.ParseInt(
@@ -185,28 +188,27 @@ func Geth(ctx context.Context, cfg *config.HealthcheckGeth) *Result {
 				16, 64,
 			)
 			if err != nil {
-				return &Result{
-					Err: fmt.Errorf("geth: failed to parse hex timestamp '%s': %w",
-						latestBlock.Result.Timestamp,
-						err,
-					),
-				}
+				healthcheck.Err = fmt.Errorf("failed to parse hex timestamp '%s': %w",
+					latestBlock.Result.Timestamp,
+					err,
+				)
+				return
 			}
 
 			timestamp := time.Unix(epoch, 0)
 			age := now.Sub(timestamp)
 
 			if age > cfg.BlockAgeThreshold {
-				return &Result{
-					Err: fmt.Errorf("geth: latest block's timestamp '%s' is too old: %s > %s",
-						latestBlock.Result.Timestamp,
-						age,
-						cfg.BlockAgeThreshold,
-					),
-				}
+				healthcheck.Err = fmt.Errorf("latest block's timestamp '%s' is too old: %s > %s",
+					latestBlock.Result.Timestamp,
+					age,
+					cfg.BlockAgeThreshold,
+				)
+				return
 			}
 		}
 	}
 
-	return &Result{Ok: true}
+	healthcheck.Ok = true
+	return
 }

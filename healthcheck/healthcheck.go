@@ -1,10 +1,28 @@
 package healthcheck
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 type Monitor = func(context.Context) *Result
 
 type Result struct {
-	Ok  bool
-	Err error
+	Source string
+	Ok     bool
+	Err    error
 }
+
+func (r *Result) Error() error {
+	return fmt.Errorf("%s: %w",
+		r.Source,
+		r.Err,
+	)
+}
+
+const (
+	SourceGeth       = "geth"
+	SourceLighthouse = "lighthouse"
+	SourceOpNode     = "op-node"
+	SourceReth       = "reth"
+)

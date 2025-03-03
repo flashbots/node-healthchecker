@@ -100,7 +100,9 @@ type opNodeL2BlockRef struct {
 	} `json:"l1origin"`
 }
 
-func OpNode(ctx context.Context, cfg *config.HealthcheckOpNode) *Result {
+func OpNode(ctx context.Context, cfg *config.HealthcheckOpNode) (healthcheck *Result) {
+	healthcheck = &Result{Source: SourceOpNode}
+
 	{ // optimism_syncStatus
 
 		// https://docs.optimism.io/builders/node-operators/json-rpc#optimism_syncstatus
@@ -115,7 +117,8 @@ func OpNode(ctx context.Context, cfg *config.HealthcheckOpNode) *Result {
 			bytes.NewReader([]byte(optimismSyncStatus)),
 		)
 		if err != nil {
-			return &Result{Err: fmt.Errorf("op-node: %w", err)}
+			healthcheck.Err = err
+			return
 		}
 		req.Header.Set("accept", "application/json")
 		req.Header.Set("content-type", "application/json")
@@ -123,59 +126,59 @@ func OpNode(ctx context.Context, cfg *config.HealthcheckOpNode) *Result {
 		now := time.Now()
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return &Result{Err: fmt.Errorf("op-node: %w", err)}
+			healthcheck.Err = err
+			return
 		}
 		defer res.Body.Close()
 
 		body, err := io.ReadAll(res.Body)
 		if err != nil {
-			return &Result{Err: fmt.Errorf("op-node: %w", err)}
+			healthcheck.Err = err
+			return
 		}
 
 		if res.StatusCode != http.StatusOK {
-			return &Result{
-				Err: fmt.Errorf("op-node: unexpected HTTP status '%d': %s",
-					res.StatusCode,
-					string(body),
-				),
-			}
+			healthcheck.Err = fmt.Errorf("unexpected HTTP status '%d': %s",
+				res.StatusCode,
+				string(body),
+			)
+			return
 		}
 
 		var status opNodeSyncStatus
 		err = json.Unmarshal(body, &status)
 		if err != nil {
-			return &Result{
-				Err: fmt.Errorf("op-node: failed to parse JSON body '%s': %w",
-					string(body),
-					err,
-				),
-			}
+			healthcheck.Err = fmt.Errorf("failed to parse JSON body '%s': %w",
+				string(body),
+				err,
+			)
+			return
 		}
 
 		if status.Result.CurrentL1.Number > status.Result.HeadL1.Number {
 			dist := status.Result.CurrentL1.Number - status.Result.HeadL1.Number
 			if dist == 1 {
-				return &Result{Ok: true}
+				healthcheck.Ok = true
+				return
 			}
-			return &Result{
-				Ok: true,
-				Err: fmt.Errorf("op-node: current l1 block (number: %d, hash: %s) is greater than head (number: %d, hash %s): %d - %d = %d",
-					status.Result.CurrentL1.Number, status.Result.CurrentL1.Hash,
-					status.Result.HeadL1.Number, status.Result.HeadL1.Hash,
-					status.Result.CurrentL1.Number, status.Result.HeadL1.Number, dist,
-				),
-			}
+
+			healthcheck.Ok = true
+			healthcheck.Err = fmt.Errorf("current l1 block (number: %d, hash: %s) is greater than head (number: %d, hash %s): %d - %d = %d",
+				status.Result.CurrentL1.Number, status.Result.CurrentL1.Hash,
+				status.Result.HeadL1.Number, status.Result.HeadL1.Hash,
+				status.Result.CurrentL1.Number, status.Result.HeadL1.Number, dist,
+			)
+			return
 		}
 
 		dist := status.Result.HeadL1.Number - status.Result.CurrentL1.Number
 		if dist > cfg.ConfirmationDistance {
-			return &Result{
-				Err: fmt.Errorf("op-node: current l1 block (number: %d, hash: %s) is behind the l1 head (number: %d, hash: %s) for more than confirmation distance: %d > %d",
-					status.Result.CurrentL1.Number, status.Result.CurrentL1.Hash,
-					status.Result.HeadL1.Number, status.Result.HeadL1.Hash,
-					dist, cfg.ConfirmationDistance,
-				),
-			}
+			healthcheck.Err = fmt.Errorf("current l1 block (number: %d, hash: %s) is behind the l1 head (number: %d, hash: %s) for more than confirmation distance: %d > %d",
+				status.Result.CurrentL1.Number, status.Result.CurrentL1.Hash,
+				status.Result.HeadL1.Number, status.Result.HeadL1.Hash,
+				dist, cfg.ConfirmationDistance,
+			)
+			return
 		}
 
 		if cfg.BlockAgeThreshold != 0 {
@@ -183,16 +186,16 @@ func OpNode(ctx context.Context, cfg *config.HealthcheckOpNode) *Result {
 			age := now.Sub(timestamp)
 
 			if age > cfg.BlockAgeThreshold {
-				return &Result{
-					Err: fmt.Errorf("op-node: latest l2 unsafe timestamp %d is too old: %s > %s",
-						status.Result.UnsafeL2.Time,
-						age,
-						cfg.BlockAgeThreshold,
-					),
-				}
+				healthcheck.Err = fmt.Errorf("latest l2 unsafe timestamp %d is too old: %s > %s",
+					status.Result.UnsafeL2.Time,
+					age,
+					cfg.BlockAgeThreshold,
+				)
+				return
 			}
 		}
 	}
 
-	return &Result{Ok: true}
+	healthcheck.Ok = true
+	return
 }

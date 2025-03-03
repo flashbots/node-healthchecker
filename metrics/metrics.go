@@ -20,6 +20,9 @@ var (
 func Setup(ctx context.Context) error {
 	for _, setup := range []func(context.Context) error{
 		setupMeter, // must come first
+		setupHealthchecksFlipCount,
+		setupHealthchecksNokCount,
+		setupHealthchecksOkCount,
 	} {
 		if err := setup(ctx); err != nil {
 			return err
@@ -50,5 +53,38 @@ func setupMeter(ctx context.Context) error {
 
 	meter = provider.Meter(metricsNamespace)
 
+	return nil
+}
+
+func setupHealthchecksFlipCount(ctx context.Context) error {
+	m, err := meter.Int64Counter("healthcheck_flip_count",
+		otelapi.WithDescription("count healthchecks that changed from ok to nok and vice versa"),
+	)
+	if err != nil {
+		return err
+	}
+	HealthchecksFlipCount = m
+	return nil
+}
+
+func setupHealthchecksNokCount(ctx context.Context) error {
+	m, err := meter.Int64Counter("healthcheck_nok_count",
+		otelapi.WithDescription("count of unsuccessful healthchecks"),
+	)
+	if err != nil {
+		return err
+	}
+	HealthchecksNokCount = m
+	return nil
+}
+
+func setupHealthchecksOkCount(ctx context.Context) error {
+	m, err := meter.Int64Counter("healthcheck_ok_count",
+		otelapi.WithDescription("count of successful healthchecks"),
+	)
+	if err != nil {
+		return err
+	}
+	HealthchecksOkCount = m
 	return nil
 }
