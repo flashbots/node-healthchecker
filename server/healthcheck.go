@@ -79,20 +79,18 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request, cached bool, err
 
 		for idx, err := range errs {
 			line := fmt.Sprintf("%d: error: %s\n", idx, err)
-			_, err := w.Write([]byte(line))
-			if err != nil {
+			if _, _err := w.Write([]byte(line)); _err != nil {
 				l.Error("Failed to write the response body",
-					zap.Error(err),
+					zap.Error(_err),
 				)
 			}
 		}
 		offset := len(errs)
 		for idx, warn := range wrns {
 			line := fmt.Sprintf("%d: warning: %s\n", offset+idx, warn)
-			_, err := w.Write([]byte(line))
-			if err != nil {
+			if _, _err := w.Write([]byte(line)); _err != nil {
 				l.Error("Failed to write the response body",
-					zap.Error(err),
+					zap.Error(_err),
 				)
 			}
 		}
@@ -110,17 +108,16 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request, cached bool, err
 
 		for idx, warn := range wrns {
 			line := fmt.Sprintf("%d: warning: %s\n", idx, warn)
-			_, err := w.Write([]byte(line))
-			if err != nil {
+			if _, _err := w.Write([]byte(line)); _err != nil {
 				l.Error("Failed to write the response body",
-					zap.Error(err),
+					zap.Error(_err),
 				)
 			}
 		}
 
 		if !cached {
-			l.Warn("Healthcheck encountered upstream error(s)",
-				zap.Error(errors.Join(errs...)),
+			l.Warn("Healthcheck encountered upstream warning(s)",
+				zap.Error(errors.Join(wrns...)),
 				zap.Int("http_status", s.cfg.HttpStatus.Warning),
 			)
 		}
