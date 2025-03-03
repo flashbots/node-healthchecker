@@ -44,10 +44,6 @@ func (s *Server) healthcheck(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
-	// 	metrics.HealthchecksOkCount.Add(context.Background(), 1,
-	// 	otelapi.WithAttributes(),
-	// )
-
 	errs := []error{}
 	wrns := []error{}
 	for count > 0 {
@@ -55,6 +51,10 @@ func (s *Server) healthcheck(w http.ResponseWriter, r *http.Request) {
 		if res := <-results; res != nil {
 			if !res.Ok {
 				errs = append(errs, res.Error())
+
+				metrics.HealthcheckUp.Record(context.Background(), 0, otelapi.WithAttributes(
+					attribute.KeyValue{Key: "healthcheck_source", Value: attribute.StringValue(res.Source)},
+				))
 
 				metrics.HealthchecksNokCount.Add(context.Background(), 1, otelapi.WithAttributes(
 					attribute.KeyValue{Key: "healthcheck_source", Value: attribute.StringValue(res.Source)},
@@ -73,6 +73,10 @@ func (s *Server) healthcheck(w http.ResponseWriter, r *http.Request) {
 			if res.Err != nil {
 				wrns = append(wrns, res.Error())
 			}
+
+			metrics.HealthcheckUp.Record(context.Background(), 1, otelapi.WithAttributes(
+				attribute.KeyValue{Key: "healthcheck_source", Value: attribute.StringValue(res.Source)},
+			))
 
 			metrics.HealthchecksOkCount.Add(context.Background(), 1, otelapi.WithAttributes(
 				attribute.KeyValue{Key: "healthcheck_source", Value: attribute.StringValue(res.Source)},

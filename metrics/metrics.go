@@ -23,6 +23,7 @@ func Setup(ctx context.Context) error {
 		setupHealthchecksFlipCount,
 		setupHealthchecksNokCount,
 		setupHealthchecksOkCount,
+		setupHealthchecksUp,
 	} {
 		if err := setup(ctx); err != nil {
 			return err
@@ -86,5 +87,16 @@ func setupHealthchecksOkCount(ctx context.Context) error {
 		return err
 	}
 	HealthchecksOkCount = m
+	return nil
+}
+
+func setupHealthchecksUp(ctx context.Context) error {
+	m, err := meter.Int64Gauge("healthcheck_up",
+		otelapi.WithDescription("healthcheck status"),
+	)
+	if err != nil {
+		return err
+	}
+	HealthcheckUp = m
 	return nil
 }
