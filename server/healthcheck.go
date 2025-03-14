@@ -18,6 +18,11 @@ import (
 )
 
 func (s *Server) healthcheck(w http.ResponseWriter, r *http.Request) {
+	if s.shuttingDown.Load() {
+		s.report(w, r, true, []error{errors.New("shutting down...")}, nil)
+		return
+	}
+
 	if s.cfg.Healthcheck.CacheCoolOff != 0 {
 		s.cache.mx.Lock()
 		defer s.cache.mx.Unlock()

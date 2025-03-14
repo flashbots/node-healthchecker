@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/atomic"
 	"go.uber.org/zap"
 
 	"github.com/flashbots/node-healthchecker/config"
@@ -22,7 +23,8 @@ import (
 type Server struct {
 	cfg *config.Config
 
-	failure chan error
+	failure      chan error
+	shuttingDown atomic.Bool
 
 	logger *zap.Logger
 	server *http.Server
@@ -66,11 +68,12 @@ func New(cfg *config.Config) (*Server, error) {
 	}
 
 	s := &Server{
-		cfg:      cfg,
-		failure:  make(chan error, 1),
-		logger:   zap.L(),
-		monitors: monitors,
-		ok:       ok,
+		cfg:          cfg,
+		failure:      make(chan error, 1),
+		shuttingDown: *atomic.NewBool(false),
+		logger:       zap.L(),
+		monitors:     monitors,
+		ok:           ok,
 	}
 
 	if cfg.Healthcheck.CacheCoolOff != 0 {
@@ -118,27 +121,40 @@ func (s *Server) Run() error {
 		terminator := make(chan os.Signal, 1)
 		signal.Notify(terminator, os.Interrupt, syscall.SIGTERM)
 
-		select {
-		case stop := <-terminator:
-			l.Info("Stop signal received; shutting down...",
-				zap.String("signal", stop.String()),
-			)
-		case err := <-s.failure:
-			l.Error("Internal failure; shutting down...",
-				zap.Error(err),
-			)
-			errs = append(errs, err)
-		exhaustErrors:
-			for { // exhaust the errors
-				select {
-				case err := <-s.failure:
-					l.Error("Extra internal failure",
-						zap.Error(err),
-					)
-					errs = append(errs, err)
-				default:
-					break exhaustErrors
+		gracefulShutdown := make(chan os.Signal, 1)
+		signal.Notify(gracefulShutdown, syscall.SIGHUP)
+
+	loop:
+		for {
+			select {
+			case sighup := <-gracefulShutdown:
+				l.Info("Graceful shutdown signal received; will be failing all healthchecks from now on...",
+					zap.String("signal", sighup.String()),
+				)
+				s.shuttingDown.Store(true)
+			case stop := <-terminator:
+				l.Info("Stop signal received; shutting down...",
+					zap.String("signal", stop.String()),
+				)
+				break loop
+			case err := <-s.failure:
+				l.Error("Internal failure; shutting down...",
+					zap.Error(err),
+				)
+				errs = append(errs, err)
+			exhaustErrors:
+				for { // exhaust the errors
+					select {
+					case err := <-s.failure:
+						l.Error("Extra internal failure",
+							zap.Error(err),
+						)
+						errs = append(errs, err)
+					default:
+						break exhaustErrors
+					}
 				}
+				break loop
 			}
 		}
 	}
