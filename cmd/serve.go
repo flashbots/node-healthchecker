@@ -30,8 +30,8 @@ func CommandServe(cfg *config.Config) *cli.Command {
 	}
 	// healthcheck
 
-	healthcheckFlags := []cli.Flag{
-		&cli.DurationFlag{
+	healthcheckFlags := []cli.Flag{ // --healthcheck-xxx
+		&cli.DurationFlag{ // --healthcheck-block-age-threshold
 			Category:    strings.ToUpper(categoryHealthcheck),
 			Destination: &cfg.Healthcheck.BlockAgeThreshold,
 			DefaultText: "disabled",
@@ -41,7 +41,7 @@ func CommandServe(cfg *config.Config) *cli.Command {
 			Value:       0,
 		},
 
-		&cli.DurationFlag{
+		&cli.DurationFlag{ // --healthcheck-cache-cool-off
 			Category:    strings.ToUpper(categoryHealthcheck),
 			Destination: &cfg.Healthcheck.CacheCoolOff,
 			EnvVars:     []string{envPrefix + strings.ToUpper(categoryHealthcheck) + "_CACHE_COOL_OFF"},
@@ -50,7 +50,7 @@ func CommandServe(cfg *config.Config) *cli.Command {
 			Value:       750 * time.Millisecond,
 		},
 
-		&cli.DurationFlag{
+		&cli.DurationFlag{ // --healthcheck-timeout
 			Category:    strings.ToUpper(categoryHealthcheck),
 			Destination: &cfg.Healthcheck.Timeout,
 			EnvVars:     []string{envPrefix + strings.ToUpper(categoryHealthcheck) + "_TIMEOUT"},
@@ -58,12 +58,22 @@ func CommandServe(cfg *config.Config) *cli.Command {
 			Usage:       "maximum `duration` of a single healthcheck",
 			Value:       time.Second,
 		},
+
+		&cli.DurationFlag{ // --healthcheck-unconditional-fail-duration
+			Category:    strings.ToUpper(categoryHealthcheck),
+			Destination: &cfg.Healthcheck.UnconditionalFailDuration,
+			EnvVars:     []string{envPrefix + strings.ToUpper(categoryHealthcheck) + "_UNCONDITIONAL_FAIL_DURATION"},
+			Name:        categoryHealthcheck + "-unconditional-fail-duration",
+			DefaultText: "infinite",
+			Usage:       "`duration` of node-healthchecker failing the healthchecks when requested with SIGHUP",
+			Value:       0,
+		},
 	}
 
 	// healthcheck geth
 
-	healthcheckGethFlags := []cli.Flag{
-		&cli.StringFlag{
+	healthcheckGethFlags := []cli.Flag{ // --healthcheck-geth-xxx
+		&cli.StringFlag{ // --healthcheck-geth-base-url
 			Category:    strings.ToUpper(categoryHealthcheckGeth),
 			Destination: &cfg.HealthcheckGeth.BaseURL,
 			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ToUpper(categoryHealthcheckGeth), " ", "_") + "_BASE_URL"},
@@ -74,8 +84,8 @@ func CommandServe(cfg *config.Config) *cli.Command {
 
 	// healthcheck lighthouse
 
-	healthcheckLighthouseFlags := []cli.Flag{
-		&cli.StringFlag{
+	healthcheckLighthouseFlags := []cli.Flag{ // --healthcheck-lighthouse-xxx
+		&cli.StringFlag{ // --healthcheck-lighthouse-base-url
 			Category:    strings.ToUpper(categoryHealthcheckLighthouse),
 			Destination: &cfg.HealthcheckLighthouse.BaseURL,
 			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ToUpper(categoryHealthcheckLighthouse), " ", "_") + "_BASE_URL"},
@@ -86,8 +96,8 @@ func CommandServe(cfg *config.Config) *cli.Command {
 
 	// healthcheck op-node
 
-	healthcheckOpNodeFlags := []cli.Flag{
-		&cli.StringFlag{
+	healthcheckOpNodeFlags := []cli.Flag{ // --healthcheck-op-node-xxx
+		&cli.StringFlag{ // --healthcheck-op-node-base-url
 			Category:    strings.ToUpper(categoryHealthcheckOpNode),
 			Destination: &cfg.HealthcheckOpNode.BaseURL,
 			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ReplaceAll(strings.ToUpper(categoryHealthcheckOpNode), " ", "_"), "-", "_") + "_BASE_URL"},
@@ -95,7 +105,7 @@ func CommandServe(cfg *config.Config) *cli.Command {
 			Usage:       "base `url` of op-node's RPC endpoint",
 		},
 
-		&cli.Uint64Flag{
+		&cli.Uint64Flag{ // --healthcheck-op-node-conf-distance
 			Category:    strings.ToUpper(categoryHealthcheckOpNode),
 			Destination: &cfg.HealthcheckOpNode.ConfirmationDistance,
 			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ReplaceAll(strings.ToUpper(categoryHealthcheckOpNode), " ", "_"), "-", "_") + "_CONF_DISTANCE"},
@@ -107,8 +117,8 @@ func CommandServe(cfg *config.Config) *cli.Command {
 
 	// healthcheck reth
 
-	healthcheckRethFlags := []cli.Flag{
-		&cli.StringFlag{
+	healthcheckRethFlags := []cli.Flag{ // --healthcheck-reth-xxx
+		&cli.StringFlag{ // --healthcheck-reth-base-url
 			Category:    strings.ToUpper(categoryHealthcheckReth),
 			Destination: &cfg.HealthcheckReth.BaseURL,
 			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ToUpper(categoryHealthcheckReth), " ", "_") + "_BASE_URL"},
@@ -119,8 +129,8 @@ func CommandServe(cfg *config.Config) *cli.Command {
 
 	// http status
 
-	httpStatusFlags := []cli.Flag{
-		&cli.IntFlag{
+	httpStatusFlags := []cli.Flag{ // --healthcheck-http-status
+		&cli.IntFlag{ // --healthcheck-http-status-ok
 			Category:    strings.ToUpper(categoryHttpStatus),
 			Destination: &cfg.HttpStatus.Ok,
 			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ToUpper(categoryHttpStatus), " ", "_") + "_OK"},
@@ -129,7 +139,7 @@ func CommandServe(cfg *config.Config) *cli.Command {
 			Value:       http.StatusOK,
 		},
 
-		&cli.IntFlag{
+		&cli.IntFlag{ // --healthcheck-http-status-warning
 			Category:    strings.ToUpper(categoryHttpStatus),
 			Destination: &cfg.HttpStatus.Warning,
 			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ToUpper(categoryHttpStatus), " ", "_") + "_WARNING"},
@@ -138,7 +148,7 @@ func CommandServe(cfg *config.Config) *cli.Command {
 			Value:       http.StatusAccepted,
 		},
 
-		&cli.IntFlag{
+		&cli.IntFlag{ // --healthcheck-http-status-error
 			Category:    strings.ToUpper(categoryHttpStatus),
 			Destination: &cfg.HttpStatus.Error,
 			EnvVars:     []string{envPrefix + strings.ReplaceAll(strings.ToUpper(categoryHttpStatus), " ", "_") + "_ERROR"},
@@ -150,8 +160,8 @@ func CommandServe(cfg *config.Config) *cli.Command {
 
 	// server
 
-	serverFlags := []cli.Flag{
-		&cli.StringFlag{
+	serverFlags := []cli.Flag{ // --server-xxx
+		&cli.StringFlag{ // --server-listen-address
 			Category:    strings.ToUpper(categoryServer),
 			Destination: &cfg.Server.ListenAddress,
 			EnvVars:     []string{envPrefix + strings.ToUpper(categoryServer) + "_LISTEN_ADDRESS"},

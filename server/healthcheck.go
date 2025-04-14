@@ -18,8 +18,8 @@ import (
 )
 
 func (s *Server) healthcheck(w http.ResponseWriter, r *http.Request) {
-	if s.shuttingDown.Load() {
-		s.report(w, r, true, []error{errors.New("shutting down...")}, nil)
+	if s.unconditionalFail.Load() {
+		s.report(w, r, true, []error{errors.New("unconditional fail requested")}, nil)
 		return
 	}
 

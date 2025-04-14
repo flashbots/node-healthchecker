@@ -51,18 +51,13 @@ NAME:
 USAGE:
    node-healthchecker serve [command options]
 
-GLOBAL OPTIONS:
-   --log-level value  logging level (default: "info") [$NH_LOG_LEVEL]
-   --log-mode value   logging mode (default: "prod") [$NH_LOG_MODE]
-
 OPTIONS:
    HEALTHCHECK
 
-   --healthcheck-block-age-threshold duration  monitor the age of latest block and report unhealthy if it's over specified duration (default: disabled) [$NH_HEALTHCHECK_BLOCK_AGE_THRESHOLD]
-   --healthcheck-cache-cool-off duration       re-use healthcheck results for the specified duration (default: 750ms) [$NH_HEALTHCHECK_CACHE_COOL_OFF]
-   --healthcheck-timeout duration              maximum duration of a single healthcheck (default: 1s) [$NH_HEALTHCHECK_TIMEOUT]
-
-   --healthcheck-timeout duration  maximum duration of a single healthcheck (default: 1s) [$NH_HEALTHCHECK_TIMEOUT]
+   --healthcheck-block-age-threshold duration          monitor the age of latest block and report unhealthy if it's over specified duration (default: disabled) [$NH_HEALTHCHECK_BLOCK_AGE_THRESHOLD]
+   --healthcheck-cache-cool-off duration               re-use healthcheck results for the specified duration (default: 750ms) [$NH_HEALTHCHECK_CACHE_COOL_OFF]
+   --healthcheck-timeout duration                      maximum duration of a single healthcheck (default: 1s) [$NH_HEALTHCHECK_TIMEOUT]
+   --healthcheck-unconditional-fail-duration duration  duration of node-healthchecker failing the healthchecks when requested with SIGHUP (default: infinite) [$NH_HEALTHCHECK_UNCONDITIONAL_FAIL_DURATION]
 
    HEALTHCHECK GETH
 
@@ -89,5 +84,5 @@ OPTIONS:
 
    SERVER
 
-   --server-listen-address host:port  host:port for the server to listen on (default: "xxx.xxx.xxx.xxx:8080") [$NH_SERVER_LISTEN_ADDRESS]
+   --server-listen-address host:port  host:port for the server to listen on (default: "10.11.12.17:8080") [$NH_SERVER_LISTEN_ADDRESS]
 ```

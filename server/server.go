@@ -9,22 +9,22 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"go.uber.org/atomic"
-	"go.uber.org/zap"
-
 	"github.com/flashbots/node-healthchecker/config"
 	"github.com/flashbots/node-healthchecker/healthcheck"
 	"github.com/flashbots/node-healthchecker/httplogger"
 	"github.com/flashbots/node-healthchecker/logutils"
 	"github.com/flashbots/node-healthchecker/metrics"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/atomic"
+	"go.uber.org/zap"
 )
 
 type Server struct {
 	cfg *config.Config
 
-	failure      chan error
-	shuttingDown atomic.Bool
+	failure           chan error
+	unconditionalFail atomic.Bool
 
 	logger *zap.Logger
 	server *http.Server
@@ -68,12 +68,12 @@ func New(cfg *config.Config) (*Server, error) {
 	}
 
 	s := &Server{
-		cfg:          cfg,
-		failure:      make(chan error, 1),
-		shuttingDown: *atomic.NewBool(false),
-		logger:       zap.L(),
-		monitors:     monitors,
-		ok:           ok,
+		cfg:               cfg,
+		failure:           make(chan error, 1),
+		logger:            zap.L(),
+		monitors:          monitors,
+		ok:                ok,
+		unconditionalFail: *atomic.NewBool(false),
 	}
 
 	if cfg.Healthcheck.CacheCoolOff != 0 {
@@ -121,22 +121,32 @@ func (s *Server) Run() error {
 		terminator := make(chan os.Signal, 1)
 		signal.Notify(terminator, os.Interrupt, syscall.SIGTERM)
 
-		gracefulShutdown := make(chan os.Signal, 1)
-		signal.Notify(gracefulShutdown, syscall.SIGHUP)
+		unconditionalFail := make(chan os.Signal, 1)
+		signal.Notify(unconditionalFail, syscall.SIGHUP)
 
-	loop:
+	run:
 		for {
 			select {
-			case sighup := <-gracefulShutdown:
-				l.Info("Graceful shutdown signal received; will be failing all healthchecks from now on...",
-					zap.String("signal", sighup.String()),
-				)
-				s.shuttingDown.Store(true)
-			case stop := <-terminator:
+			case sig := <-unconditionalFail:
+				if s.cfg.Healthcheck.UnconditionalFailDuration == 0 {
+					l.Info("Unconditional fail signal received; will be failing all healthchecks from now on...",
+						zap.String("signal", sig.String()),
+					)
+				} else {
+					l.Info("Unconditional fail signal received; will be failing all healthchecks for the next "+s.cfg.Healthcheck.UnconditionalFailDuration.String()+"...",
+						zap.String("signal", sig.String()),
+					)
+					go func() {
+						time.Sleep(s.cfg.Healthcheck.UnconditionalFailDuration)
+						s.unconditionalFail.Store(false)
+					}()
+				}
+				s.unconditionalFail.Store(true)
+			case sig := <-terminator:
 				l.Info("Stop signal received; shutting down...",
-					zap.String("signal", stop.String()),
+					zap.String("signal", sig.String()),
 				)
-				break loop
+				break run
 			case err := <-s.failure:
 				l.Error("Internal failure; shutting down...",
 					zap.Error(err),
@@ -154,7 +164,7 @@ func (s *Server) Run() error {
 						break exhaustErrors
 					}
 				}
-				break loop
+				break run
 			}
 		}
 	}
