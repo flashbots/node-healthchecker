@@ -139,6 +139,7 @@ func (s *Server) Run() error {
 					go func() {
 						time.Sleep(s.cfg.Healthcheck.UnconditionalFailDuration)
 						s.unconditionalFail.Store(false)
+						l.Info("Restored normal healthchecks")
 					}()
 				}
 				s.unconditionalFail.Store(true)
