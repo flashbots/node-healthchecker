@@ -133,7 +133,8 @@ func (s *Server) Run() error {
 						zap.String("signal", sig.String()),
 					)
 				} else {
-					l.Info("Unconditional fail signal received; will be failing all healthchecks for the next "+s.cfg.Healthcheck.UnconditionalFailDuration.String()+"...",
+					l.Info("Unconditional fail signal received; will be failing all healthchecks for configured duration... ",
+						zap.Duration("duration", s.cfg.Healthcheck.UnconditionalFailDuration),
 						zap.String("signal", sig.String()),
 					)
 					go func() {
