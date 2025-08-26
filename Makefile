@@ -4,7 +4,8 @@ VERSION := $(VERSION:v%=%)
 .PHONY: build
 build:
 	@CGO_ENABLED=0 go build \
-			-ldflags "-X main.version=${VERSION}" \
+			-trimpath \
+			-ldflags "-s -w -X main.version=${VERSION} -buildid=" \
 			-o ./bin/node-healthchecker \
 		github.com/flashbots/node-healthchecker/cmd
 

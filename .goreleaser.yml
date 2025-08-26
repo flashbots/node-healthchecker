@@ -7,6 +7,9 @@ builds:
       - -s
       - -w
       - -X main.version={{ .Version }}
+      - -buildid=
+    flags:
+      - -trimpath
     targets:
       - linux_amd64
       - linux_arm64
@@ -31,6 +34,7 @@ dockers:
     use: buildx
     build_flag_templates:
       - --platform=linux/amd64
+      - --build-arg=SOURCE_DATE_EPOCH=0
     image_templates:
       - "flashbots/node-healthchecker:{{ .Tag }}-amd64"
       - "ghcr.io/flashbots/node-healthchecker:{{ .Tag }}-amd64"
@@ -41,6 +45,7 @@ dockers:
     use: buildx
     build_flag_templates:
       - --platform=linux/arm64
+      - --build-arg=SOURCE_DATE_EPOCH=0
     image_templates:
       - "flashbots/node-healthchecker:{{ .Tag }}-arm64"
       - "ghcr.io/flashbots/node-healthchecker:{{ .Tag }}-arm64"
