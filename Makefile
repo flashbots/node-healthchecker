@@ -3,7 +3,7 @@ VERSION := $(VERSION:v%=%)
 
 .PHONY: build
 build:
-	@CGO_ENABLED=0 go build \
+	@CGO_ENABLED=0 SOURCE_DATE_EPOCH=0 go build \
 			-trimpath \
 			-ldflags "-s -w -X main.version=${VERSION} -buildid=" \
 			-o ./bin/node-healthchecker \

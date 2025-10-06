@@ -11,8 +11,7 @@ RUN go mod download
 
 COPY . .
 
-ARG SOURCE_DATE_EPOCH=0
-RUN CGO_ENABLED=0 go build \
+RUN SOURCE_DATE_EPOCH=0 CGO_ENABLED=0 go build \
     -trimpath \
     -ldflags "-s -w -buildid=" \
     -o bin/node-healthchecker \
